@@ -191,8 +191,9 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .kr-fill{height:100%;background:var(--accent);border-radius:6px;transition:width .3s;}
 .kr-pct{font-size:13px;color:var(--main-dark);min-width:42px;text-align:right;white-space:nowrap;}
 .kr-badge{font-size:10px;background:var(--blue-bg);color:var(--blue);border-radius:8px;padding:2px 8px;white-space:nowrap;}
-.kr-manual{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--text-dim);}
-.kr-manual input[type=range]{flex:1;accent-color:var(--main);}
+.kr-auto-hint{font-size:12px;color:var(--text-dim);margin-top:8px;background:var(--bg);border-radius:8px;padding:8px 10px;line-height:1.5;}
+.quarter-goal-input{width:100%;box-sizing:border-box;margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#fff;color:var(--text);}
+.quarter-goal-input:focus{outline:none;border-color:var(--main);}
 .linked{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
 .linked label{font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:4px;cursor:pointer;border:1px solid var(--border);border-radius:14px;padding:4px 10px;background:var(--bg);}
 .linked label:has(input:checked){border-color:var(--main);background:var(--main-light);color:var(--main-dark);}
@@ -663,7 +664,7 @@ function defaultData(){
       {id:"h2",name:"冥想10分钟",icon:"🧘",done:{}},
       {id:"h3",name:"输出笔记",icon:"✍️",done:{}}
     ],
-    goals:{quarter:quarterStr(),krs:[{id:uid(),desc:"",progress:0,linked:[],counted:[]}]},
+    goals:{quarter:quarterStr(),quarterGoal:"",krs:[{id:uid(),desc:"",progress:0,linked:[],counted:[]}]},
     moments:[
       {id:uid(),time:nowHM(),emoji:"💡",text:"今天冒出一个想法：先把行为跑起来，再回过头想清楚。",isExample:true}
     ],
@@ -698,6 +699,7 @@ function migrate(d){
   if(!Array.isArray(d.habits)||d.habits.length===0) d.habits=def.habits;
   if(!d.goals) d.goals=def.goals;
   if(!Array.isArray(d.goals.krs)) d.goals.krs=def.goals.krs;
+  if(d.goals.quarterGoal===undefined) d.goals.quarterGoal="";
   d.goals.krs.forEach(k=>{ if(k.blocker===undefined)k.blocker=""; if(k.next===undefined)k.next=""; });
   if(!Array.isArray(d.moments)) d.moments=[];
   if(!Array.isArray(d.reviews)) d.reviews=[];
@@ -835,7 +837,7 @@ function computeToday(){
     if(linked.length){
       auto=Math.round(linked.filter(x=>x.t.done).length/linked.length*100);
     }
-    return {k,linked,auto,display:auto!==null?auto:(Number(k.progress)||0)};
+    return {k,linked,auto,display:linked.length?auto:0};
   });
   const goalPct=krs.length?Math.round(krs.reduce((s,x)=>s+x.display,0)/krs.length):0;
   // 此时此刻（只统计今天）
@@ -1358,8 +1360,7 @@ function renderGoals(){
   const blkAll=[];
   t.krs.forEach(({k,linked,auto,display},idx)=>{
     const undone=linked.filter(x=>!x.t.done);
-    const manualUI=(!linked.length)?`
-      <div class="kr-manual"><span>手动调整</span><input type="range" min="0" max="100" value="${k.progress||0}" oninput="setKr('${k.id}',this.value)"><span>${k.progress||0}%</span></div>`:"";
+    const noLinkUI=!linked.length?`<div class="kr-auto-hint">⚙️ 进度自动推进：先「关联今日任务」，任务完成即自动更新此进度（当前 0%）</div>`:"";
     const chips=linked.length
       ? linked.map(x=>`<span class="tchip${x.t.done?" on":""}">${x.t.done?"✓":"○"} ${escapeHtml(x.t.name||"未命名")}${x.t.reason?`<span class="x">${escapeHtml(x.t.reason)}</span>`:""}</span>`).join("")
       : `<span style="font-size:12px;color:var(--text-place)">还没关联今日行动</span>`;
@@ -1378,7 +1379,7 @@ function renderGoals(){
         <span class="kr-pct">${display}%</span>
         ${linked.length?`<span class="kr-badge">关联${linked.filter(x=>x.t.done).length}/${linked.length} 自动</span>`:""}
       </div>
-      ${manualUI}
+      ${noLinkUI}
       <div class="act-chips">${chips}</div>
       <div class="field">
         <span class="fl blk">📍 卡点（自动识别，可修改/补充）</span>
@@ -1407,16 +1408,23 @@ function renderGoals(){
   const blkHTML = blkAll.length
     ? blkAll.map(({k,undone})=>`<div class="blk-item">📍「${escapeHtml((k.desc||"").trim().slice(0,12)||"未命名大方向")}」还有 ${undone.length} 项未完成${undone.some(x=>x.t.reason)?`，卡在【${escapeHtml(undone.find(x=>x.t.reason).t.reason)}】`:""}</div>`).join("")
     : "<div class='blk-item'>没有卡点 🎉 关联行动都在推进中</div>";
+  const firstUndoneK=t.krs.find(x=>x.linked.some(y=>!y.t.done));
+  const nextLine=firstUndoneK
+    ? `<div style="font-size:13px;color:var(--main);margin-top:6px;font-weight:600">▶ 下一步：${escapeHtml(suggestionFor(firstUndoneK.k,firstUndoneK.linked,firstUndoneK.linked.filter(x=>!x.t.done)))}</div>`
+    : (t.krs.length?`<div style="font-size:13px;color:#52C41A;margin-top:6px;font-weight:600">🎉 所有关联行动已完成，本季度目标冲刺收尾</div>`:"");
   const emptyHint = t.krs.length===0 ? `<div class="banner" style="margin-top:12px">还没有大方向。点下方「+ 添加大方向」，把本季度要做的事拆成 2-3 个主要方向，再为每个方向关联今日行动。</div>` : "";
   document.getElementById("goalsInner").innerHTML=`
     <h2>🎯 我的目标</h2>
     <div class="sub">大方向 = 本季度要做的事；今日行动 = 每天走的一步。任务完成自动推进进度，卡点与下一步方向可直接填写。</div>
     <div class="goal-card">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--main-dark);font-size:15px">🏁 本季度目标 <span style="font-size:11px;color:var(--text-dim);font-weight:400">（季度初写下来，下面按大方向分类执行）</span></div>
+      <input type="text" class="quarter-goal-input" value="${escapeHtml(data.goals.quarterGoal||"")}" placeholder="例：本季度我要把内容创作跑通——3 篇深度输出 + 稳定周更 + 复盘方法论成型" onchange="setQuarterGoal(this.value)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px">
         <div class="ov-ring" style="width:64px;height:64px;--p:${t.goalPct}"><b style="font-size:14px">${t.goalPct}%</b></div>
         <div style="flex:1;min-width:200px">
-          <div style="font-weight:700;color:var(--main-dark)">季度总体进度 ${t.goalPct}%</div>
+          <div style="font-weight:700;color:var(--main-dark)">季度总体进度 ${t.goalPct}% <span style="font-size:11px;color:var(--text-dim);font-weight:400">（各方向自动汇总）</span></div>
           <div style="font-size:12px;color:var(--text-dim);margin-top:2px">${overLine}</div>
+          ${nextLine}
           <div style="font-size:13px;color:var(--text-dim);margin-top:8px">${blkHTML}</div>
         </div>
       </div>
@@ -1426,7 +1434,7 @@ function renderGoals(){
     <button class="add-habit" onclick="addKR()">+ 添加大方向</button>`;
 }
 function setKrDesc(id,v){const k=data.goals.krs.find(x=>x.id===id);if(k){k.desc=v;save();}}
-function setKr(id,v){const k=data.goals.krs.find(x=>x.id===id);if(k){k.progress=parseInt(v,10);save();renderGoals();}}
+function setQuarterGoal(v){data.goals.quarterGoal=v.trim();save();renderGoals();}
 function toggleLink(id,tid){
   const k=data.goals.krs.find(x=>x.id===id);if(!k)return;
   if(k.linked.includes(tid)){k.linked=k.linked.filter(x=>x!==tid);if(k.counted.includes(tid))k.counted=k.counted.filter(x=>x!==tid);}
