@@ -635,20 +635,15 @@ function exampleTasks(){
   return {
     create:[
       mk("写本周复盘文章","hard","p1","create"),
-      mk("读30页专业书","easy","p3","create")
+      mk("梳理知识库卡片结构","mid","p3","create")
     ],
     errand:[
-      mk("取快递","easy","p4","errand"),
-      mk("交这个月水电费","easy","p4","errand")
+      mk("取快递","easy","p4","errand")
     ],
     people:[
-      mk("给合作方回个消息","easy","p2","people"),
-      mk("约导师周五通个话","easy","p3","people")
+      mk("给合作方回个消息","easy","p2","people")
     ],
-    relax:[
-      mk("出门散步15分钟","easy","p4","relax"),
-      mk("听一首喜欢的歌","easy","p4","relax")
-    ]
+    relax:[]
   };
 }
 function defaultData(){
@@ -679,13 +674,14 @@ function migrate(d){
   d.version=APP_VERSION;
   if(!d.tasks) d.tasks=def.tasks;
   for(const c in CATS){ if(!Array.isArray(d.tasks[c])) d.tasks[c]=[]; }
-  /* v3.2：示例任务裁剪——每个分类里，除紧急重要(p1)外最多保留 2 个示例 */
-  {for(const c in CATS){
-    let nonP1=0;const kept=[];
+  /* v3.3：示例任务裁剪——除紧急重要(p1)外，每个优先级最多保留 1 个示例 */
+  {const keepByP={p1:99,p2:1,p3:1,p4:1},cnt={p1:0,p2:0,p3:0,p4:0};
+  for(const c in CATS){
+    const kept=[];
     d.tasks[c].forEach(t=>{
-      const isEx=t.isExample&&(t.priority||"p3")!=="p1";
-      if(isEx&&nonP1>=2)return;
-      if(isEx)nonP1++;
+      const pri=t.priority||"p3";
+      if(t.isExample&&cnt[pri]>=keepByP[pri])return;
+      if(t.isExample)cnt[pri]++;
       kept.push(t);
     });
     d.tasks[c]=kept;
