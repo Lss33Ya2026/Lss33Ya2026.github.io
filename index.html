@@ -1615,7 +1615,7 @@ function renderReview(){
   const undoneP1=t.undoneList.filter(x=>x.t.priority==="p1"||x.t.priority==="p2").slice(0,3);
   const suggest=undoneP1.length?`<div class="rv-hint" onclick="fillTomorrow()">💡 还没做完的紧急事：${undoneP1.map(x=>escapeHtml(x.t.name)).join("、")} —— 点这里把第一件设为明天的重点</div>`:"";
   const evalTxt=autoEval(t,r);
-  const hist=data.reviews.slice().reverse().slice(0,14).map(h=>`<div class="rh" onclick="alert('${escapeHtml((h.events||"")).replace(/'/g,"")}')"><b>${h.date}</b> · 评分 ${h.score??"-"} · ${moodLabel(h.mood)||"—"}</div>`).join("");
+  const hist=data.reviews.slice().reverse().slice(0,14).map(h=>{const snip=(h.events||h.insight||h.adjust||"").slice(0,22);return `<div class="rh" onclick="alert('${escapeHtml((h.events||h.insight||h.adjust||"今天没有补充内容")).replace(/'/g,"")}')"><b>${h.date}</b> · 评分 ${h.score??"-"} · ${moodLabel(h.mood)||"—"}${snip?`<span style="color:var(--text-dim)"> · ${escapeHtml(snip)}</span>`:""}</div>`;}).join("");
   document.getElementById("reviewInner").innerHTML=`
     <h2>📝 今日复盘</h2>
     <div class="sub">白天过完了，花一分钟回头看看。⭐ 填完「打分 + 明天最重要的一件事 + 一句反思」，顶部闭环⑤才判定完成——反思至少写一个（想明白/要调整/进步）。</div>
@@ -1647,17 +1647,27 @@ function renderReview(){
     <div class="review-hist">${hist}</div>`;
   document.getElementById("saveReview").onclick=saveReview;
 }
+function dumpReviewForm(){
+  if(!data.review)data.review={};
+  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
+  data.review.events=g("rvEvents");
+  data.review.insight=g("rvInsight");
+  data.review.tomorrow=g("rvTomorrow");
+  data.review.adjust=g("rvAdjust");
+  data.review.gain=g("rvGain");
+}
 function fillTomorrow(){
   const t=computeToday();
   const first=t.undoneList.filter(x=>x.t.priority==="p1"||x.t.priority==="p2")[0];
   if(first){
+    dumpReviewForm();
     if(!data.review)data.review={};
     data.review.tomorrow=first.t.name;
     save();renderReview();toast("已填入："+first.t.name);
   }else toast("今天没有未完成的紧急任务");
 }
-function setScore(n){if(!data.review)data.review={};data.review.score=n;save();renderReview();}
-function setMood(k){if(!data.review)data.review={};data.review.mood=k;save();renderReview();}
+function setScore(n){dumpReviewForm();if(!data.review)data.review={};data.review.score=n;save();renderReview();}
+function setMood(k){dumpReviewForm();if(!data.review)data.review={};data.review.mood=k;save();renderReview();}
 function autoEval(t,r){
   const parts=[];
   if(t.all.length&&t.comp>=80)parts.push("完成度很高，今天状态在线，把这种感觉记下来。");
@@ -1676,7 +1686,10 @@ function saveReview(){
   r.adjust=document.getElementById("rvAdjust").value;
   r.gain=document.getElementById("rvGain").value;
   if(!r.score&&!r.mood&&!r.events&&!r.insight&&!r.tomorrow&&!r.adjust&&!r.gain){toast("还没填任何内容");return;}
-  data.reviews.push({date:todayStr(),score:r.score||null,mood:r.mood||null,events:r.events,insight:r.insight,tomorrow:r.tomorrow,adjust:r.adjust,gain:r.gain});
+  const todayD=todayStr();
+  const exist=data.reviews.findIndex(x=>x.date===todayD);
+  const snap={date:todayD,score:r.score||null,mood:r.mood||null,events:r.events,insight:r.insight,tomorrow:r.tomorrow,adjust:r.adjust,gain:r.gain};
+  if(exist>=0)data.reviews[exist]=snap;else data.reviews.push(snap);
   r.saved=true;
   save();renderReview();
   const miss=[];
