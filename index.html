@@ -212,6 +212,9 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .moment-item{background:var(--card);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;}
 .moment-item .mt{font-size:12px;color:var(--text-place);white-space:nowrap;padding-top:2px;}
 .moment-item .me{font-size:16px;}
+.saved-card{background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.7));border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:10px 0;font-size:13.5px;}
+.saved-row{margin-top:6px;line-height:1.6;word-break:break-word;color:var(--text);}
+.saved-row b{color:var(--main-dark);}
 .moment-item .mc{flex:1;font-size:14px;word-break:break-word;overflow-wrap:anywhere;line-height:1.65;}
 .mm-sec{display:flex;gap:8px;margin-top:7px;line-height:1.65;}
 .mm-sec:first-of-type{margin-top:0;}
@@ -1635,6 +1638,7 @@ function renderReview(){
     <textarea class="review-input" id="rvEvents" placeholder="（可选）觉察之外还想补充的重要事件：如：终于把拖了三天的复盘写完了">${escapeHtml(r.events||"")}</textarea>
     <div style="font-weight:600;color:var(--main-dark)">今天有没有想明白什么？</div>
     <textarea class="review-input" id="rvInsight" placeholder="例如：原来我一直在等“想清楚”才动，其实动起来才想得清">${escapeHtml(r.insight||"")}</textarea>
+    <button class="copy-btn" id="btnImportInsight" style="margin:4px 0 10px">📥 从今日觉察导入「学会」汇总（不用重写）</button>
     <div style="font-weight:600;color:var(--main-dark)">明天最重要的一件事是什么？<span style="color:#c0392b">⭐必填</span><span style="font-weight:400;font-size:12px;color:var(--text-place)">（会自动变成明天的第一个任务）</span></div>
     <input class="review-input" id="rvTomorrow" style="min-height:46px" placeholder="只写一件，越具体越好" value="${escapeHtml(r.tomorrow||"")}">
     <div style="font-weight:600;color:var(--main-dark)">要调整的点是？<span style="font-weight:400;font-size:12px;color:var(--text-place)">（⭐反思三选一：想明白 / 要调整 / 进步）</span></div>
@@ -1644,8 +1648,21 @@ function renderReview(){
     ${suggest}
     <button class="btn-primary" id="saveReview">💾 保存复盘</button>
     <div class="auto-eval">${evalTxt}</div>
+    ${(r.saved&&(r.score!=null||r.events||r.insight||r.tomorrow||r.adjust||r.gain))?`<div class="saved-card"><div style="font-weight:700;color:var(--main-dark)">✅ 今天已保存的复盘内容（每日总结会同步展示）</div><div class="saved-row">评分 <b>${r.score??"未评"}</b> · 心情 ${moodLabel(r.mood)||"—"}</div>${r.events?`<div class="saved-row">📅 事件：${escapeHtml(r.events)}</div>`:""}${r.insight?`<div class="saved-row">💡 想明白：${escapeHtml(r.insight)}</div>`:""}${r.tomorrow?`<div class="saved-row">▶ 明天：${escapeHtml(r.tomorrow)}</div>`:""}${r.adjust?`<div class="saved-row">📐 要调整：${escapeHtml(r.adjust)}</div>`:""}${r.gain?`<div class="saved-row">🌟 进步：${escapeHtml(r.gain)}</div>`:""}</div>`:""}
     <div class="review-hist">${hist}</div>`;
   document.getElementById("saveReview").onclick=saveReview;
+  const impBtn=document.getElementById("btnImportInsight");
+  if(impBtn)impBtn.onclick=importInsight;
+}
+function importInsight(){
+  const t=computeToday();
+  const lns=t.moments.map(m=>m.ln).filter(x=>x&&x.trim());
+  if(!lns.length){toast("今天还没有觉察里的「学会」，先去「此时此刻」写一条");return;}
+  const v=lns.join("；");
+  const box=document.getElementById("rvInsight");
+  box.value=box.value&&box.value.trim()?box.value+"；"+v:v;
+  box.focus();
+  toast("已导入 "+lns.length+" 条「学会」");
 }
 function dumpReviewForm(){
   if(!data.review)data.review={};
