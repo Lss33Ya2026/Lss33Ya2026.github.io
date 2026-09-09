@@ -201,7 +201,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 /* ============ 此时此刻 ============ */
 .moment-input{border:1px solid var(--main);border-radius:10px;padding:12px;width:100%;min-height:96px;font-size:15px;resize:vertical;}
 .mform{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
-.moment-f{border:1px solid var(--border);border-radius:10px;padding:11px 12px;width:100%;font-size:15px;background:#fff;min-height:44px;}
+.moment-f{border:1px solid var(--border);border-radius:10px;padding:11px 12px;width:100%;font-size:15px;background:#fff;min-height:44px;line-height:1.6;resize:none;box-sizing:border-box;font-family:inherit;}
 .moment-f:focus{border-color:var(--main);outline:none;}
 .emo-tags{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
 .emo-tag{border:1px solid var(--border);background:var(--card);border-radius:20px;min-height:42px;padding:0 16px;cursor:pointer;font-size:14px;color:var(--text-dim);}
@@ -212,7 +212,10 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .moment-item{background:var(--card);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;}
 .moment-item .mt{font-size:12px;color:var(--text-place);white-space:nowrap;padding-top:2px;}
 .moment-item .me{font-size:16px;}
-.moment-item .mc{flex:1;font-size:14px;word-break:break-word;}
+.moment-item .mc{flex:1;font-size:14px;word-break:break-word;overflow-wrap:anywhere;line-height:1.65;}
+.mm-sec{display:flex;gap:8px;margin-top:7px;line-height:1.65;}
+.mm-sec:first-of-type{margin-top:0;}
+.mm-lab{flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-dim);background:var(--bg);border-radius:6px;padding:2px 9px;height:fit-content;white-space:nowrap;margin-top:2px;}
 .moment-item .mc b{color:var(--main-dark);}
 .moment-item .mc .lb{font-size:12px;color:var(--text-place);}
 .moment-del{border:none;background:transparent;color:var(--text-place);cursor:pointer;font-size:14px;min-width:34px;min-height:34px;}
@@ -632,23 +635,19 @@ function exampleTasks(){
   return {
     create:[
       mk("写本周复盘文章","hard","p1","create"),
-      mk("梳理知识库卡片结构","mid","p3","create"),
       mk("读30页专业书","easy","p3","create")
     ],
     errand:[
       mk("取快递","easy","p4","errand"),
-      mk("交这个月水电费","easy","p4","errand"),
-      mk("整理一下桌面","mid","p4","errand")
+      mk("交这个月水电费","easy","p4","errand")
     ],
     people:[
       mk("给合作方回个消息","easy","p2","people"),
-      mk("约导师周五通个话","easy","p3","people"),
-      mk("跟进一下客户进度","mid","p2","people")
+      mk("约导师周五通个话","easy","p3","people")
     ],
     relax:[
       mk("出门散步15分钟","easy","p4","relax"),
-      mk("听一首喜欢的歌","easy","p4","relax"),
-      mk("午休闭眼10分钟","easy","p4","relax")
+      mk("听一首喜欢的歌","easy","p4","relax")
     ]
   };
 }
@@ -680,6 +679,17 @@ function migrate(d){
   d.version=APP_VERSION;
   if(!d.tasks) d.tasks=def.tasks;
   for(const c in CATS){ if(!Array.isArray(d.tasks[c])) d.tasks[c]=[]; }
+  /* v3.2：示例任务裁剪——每个分类里，除紧急重要(p1)外最多保留 2 个示例 */
+  {for(const c in CATS){
+    let nonP1=0;const kept=[];
+    d.tasks[c].forEach(t=>{
+      const isEx=t.isExample&&(t.priority||"p3")!=="p1";
+      if(isEx&&nonP1>=2)return;
+      if(isEx)nonP1++;
+      kept.push(t);
+    });
+    d.tasks[c]=kept;
+  }}
   for(const c in CATS){
     d.tasks[c].forEach(t=>{
       if(!t.id) t.id=uid();
@@ -1482,12 +1492,12 @@ function renderMoments(){
       <button class="promote-btn" onclick="fillScaffold()" style="margin-top:6px">✍️ 套用这个模板（改成你自己的）</button>
     </div>
     <div class="mform">
-      <input class="moment-f" id="mfEv" placeholder="事件：发生了什么？（如：下午临时被点名汇报）">
+      <textarea class="moment-f" id="mfEv" rows="2" placeholder="事件：发生了什么？（如：下午临时被点名汇报）"></textarea>
       <div class="hint-mini">发现-动作-学会是闭环，尽量都填，至少写「学会」</div>
-      <input class="moment-f" id="mfFd" placeholder="发现了什么？（如：我发现自己一紧张就语速变快）">
-      <input class="moment-f" id="mfAc" placeholder="做了什么动作？（如：先停顿三秒，再放慢语速讲）">
-      <input class="moment-f" id="mfLn" placeholder="学会了什么？（如：停顿比快讲更有力量）">
-      <input class="moment-f" id="mfBody" placeholder="身体哪里紧？（你的身体指纹比情绪更早报警）">
+      <textarea class="moment-f" id="mfFd" rows="2" placeholder="发现了什么？（如：我发现自己一紧张就语速变快）"></textarea>
+      <textarea class="moment-f" id="mfAc" rows="2" placeholder="做了什么动作？（如：先停顿三秒，再放慢语速讲）"></textarea>
+      <textarea class="moment-f" id="mfLn" rows="2" placeholder="学会了什么？（如：停顿比快讲更有力量）"></textarea>
+      <textarea class="moment-f" id="mfBody" rows="2" placeholder="身体哪里紧？（你的身体指纹比情绪更早报警）"></textarea>
     </div>
     <div class="moment-link">
       <label class="hint-mini">关联哪个任务（可选，把觉察挂到具体行动上）</label>
@@ -1509,14 +1519,15 @@ function renderMoments(){
     </div>
     <div class="emo-tags" id="emoTags">
       ${Object.entries(EMO).map(([k,v])=>`<button class="emo-tag" data-emo="${k}">${v}</button>`).join("")}
+      <input class="moment-f" id="mfEmoCus" placeholder="➕ 没有的情绪？自己填（如：尴尬）" style="min-height:40px;flex:1 1 150px;font-size:14px;padding:8px 12px">
     </div>
     <button class="btn-primary" id="saveMoment">📌 保存此刻</button>
     ${emoTrend}
     <div class="moment-list" id="momentList"></div>
     <div class="moment-stat">今日已记录 ${list.length} 条${top?" · 高频情绪 "+top:""}</div>`;
   document.querySelectorAll("#emoTags .emo-tag").forEach(b=>b.onclick=()=>{
-    currentEmo=b.dataset.emo;
-    document.querySelectorAll("#emoTags .emo-tag").forEach(x=>x.classList.toggle("active",x===b));
+    if(currentEmo===b.dataset.emo){currentEmo="";document.querySelectorAll("#emoTags .emo-tag").forEach(x=>x.classList.remove("active"));}
+    else{currentEmo=b.dataset.emo;document.querySelectorAll("#emoTags .emo-tag").forEach(x=>x.classList.toggle("active",x===b));}
   });
   document.querySelectorAll("#bodyTags .emo-tag").forEach(b=>b.onclick=()=>{
     const inp=document.getElementById("mfBody");
@@ -1536,7 +1547,7 @@ function renderMoments(){
     const linkHtml=linked?`<div class="hint-mini">🎯 关联：${escapeHtml(CATS[linked.c].name+" · "+(linked.t.name||"未命名"))}</div>`:"";
     const vTxt={ok:'<span class="ok">✅ 有效</span>',no:'<span class="no">❌ 无效</span>',wait:'<span class="wait">⏳ 待观察</span>'}[m.verify]||"";
     const body=m.ev
-      ? `<b>事件</b> ${escapeHtml(m.ev)}<br><span class="lb">发现</span> ${escapeHtml(m.fd||"—")}　<span class="lb">动作</span> ${escapeHtml(m.ac||"—")}　<span class="lb">学会</span> ${escapeHtml(m.ln||"—")}${m.body?`　<span class="lb">身体</span> ${escapeHtml(m.body)}`:""} ${vTxt}`
+      ? `<div class="mm-sec"><span class="mm-lab">事件</span><div>${escapeHtml(m.ev)}</div></div><div class="mm-sec"><span class="mm-lab">发现</span><div>${escapeHtml(m.fd||"—")}</div></div><div class="mm-sec"><span class="mm-lab">动作</span><div>${escapeHtml(m.ac||"—")}</div></div><div class="mm-sec"><span class="mm-lab">学会</span><div>${escapeHtml(m.ln||"—")}</div></div>${m.body?`<div class="mm-sec"><span class="mm-lab">身体</span><div>${escapeHtml(m.body)}</div></div>`:""}${vTxt?`<div class="mm-sec"><span class="mm-lab">验证</span><div>${vTxt}</div></div>`:""}`
       : escapeHtml(m.text||"");
     const promHtml=m.promoted?`<div class="moment-promoted">✓ 已沉淀</div>`:`<div class="promote-row">
         <button class="promote-btn" onclick="promoteMoment('${m.id}','habit')">→ 变习惯</button>
@@ -1557,9 +1568,10 @@ function saveMoment(){
   const taskId=document.getElementById("mfTask").value;
   if(!ev){toast("至少把「事件」填上");return;}
   if(!ln){toast("已保存——但补一句「学会」才能进闭环，否则这条只算日记");}
-  const emoji=currentEmo?EMO[currentEmo].split(" ")[0]:"💬";
+  const cusEmo=(document.getElementById("mfEmoCus")||{}).value?document.getElementById("mfEmoCus").value.trim():"";
+  const emoji=cusEmo?cusEmo:(currentEmo?EMO[currentEmo].split(" ")[0]:"💬");
   data.moments.push({id:uid(),date:todayStr(),time:nowHM(),emoji,ev,fd,ac,ln,body,verify:currentVerify,taskId,text:"",promoted:false,isExample:false});
-  currentEmo="";currentVerify="";
+  currentEmo="";currentVerify="";const ce=document.getElementById("mfEmoCus");if(ce)ce.value="";
   save();renderMoments();renderLoopBar();toast("已保存");
 }
 /* 闭环第④步：把觉察沉淀成习惯 / 目标方向 / 复盘结论 */
