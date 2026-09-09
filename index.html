@@ -168,6 +168,8 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .ht-card.on .ht-check{background:var(--done);border-color:var(--done);}
 .ht-stats{font-size:12px;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;}
 .ht-stats b{color:var(--main-dark);}
+.ht-del{font-size:14px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text-dim);opacity:.5;user-select:none;line-height:1;}
+.ht-del:hover,.ht-del:active{background:rgba(234,102,104,.14);color:#c0392b;opacity:1;}
 .add-habit{border:1px dashed var(--main);color:var(--main);background:transparent;border-radius:10px;min-height:44px;padding:0 18px;cursor:pointer;font-size:14px;}
 .cal{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;max-width:440px;}
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;}
@@ -1248,8 +1250,10 @@ function renderHabits(){
     const div=document.createElement("div");
     div.className="ht-card"+(x.todayDone?" on":"");
     div.onclick=()=>toggleHabitToday(h.id);
-    div.innerHTML=`<div class="ht-top"><span class="ht-name">${h.icon} ${escapeHtml(h.name)}</span><span class="ht-check">${x.todayDone?"✓":""}</span></div>
+    div.innerHTML=`<div class="ht-top"><span class="ht-name">${h.icon} ${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><span class="ht-check">${x.todayDone?"✓":""}</span><span class="ht-del" title="删除习惯">🗑</span></span></div>
       <div class="ht-stats"><span>连续 <b>${x.streak}</b> 天</span><span>本月 <b>${x.month}</b> 天</span><span>最长 <b>${x.best}</b> 天</span></div>`;
+    const delBtn=div.querySelector(".ht-del");
+    if(delBtn)delBtn.onclick=e=>{e.stopPropagation();delHabit(h.id);};
     list.appendChild(div);
   });
   if(!data.habits.length){
