@@ -712,6 +712,7 @@ function migrate(d){
   if(!Array.isArray(d.goals.krs)) d.goals.krs=def.goals.krs;
   if(d.goals.quarterGoal===undefined) d.goals.quarterGoal="";
   d.goals.krs.forEach(k=>{ if(k.blocker===undefined)k.blocker=""; if(k.next===undefined)k.next=""; });
+  if(d.overrides===undefined)d.overrides={};
   if(!Array.isArray(d.moments)) d.moments=[];
   if(!Array.isArray(d.reviews)) d.reviews=[];
   if(!Array.isArray(d.dayLogs)) d.dayLogs=[];
@@ -1651,7 +1652,7 @@ function renderReview(){
     <input class="review-input" id="rvGain" style="min-height:46px" placeholder="哪怕很小：如：第一次主动在群里发言" value="${escapeHtml(r.gain||"")}">
     ${suggest}
     <button class="btn-primary" id="saveReview">💾 保存复盘</button>
-    <div class="auto-eval">${evalTxt}</div>
+    ${(data.overrides&&data.overrides.eval)?`<div class="auto-eval"><span style="font-weight:700;color:var(--main-dark)">✍️ 你的版本：</span>${escapeHtml(data.overrides.eval)} <button class="copy-btn" style="margin-left:6px" onclick="clearOverride('eval')">↩ 恢复自动</button></div>`:`<div class="auto-eval">${evalTxt}<button class="copy-btn" style="margin-left:8px" onclick="setOverride('eval')">✏️ 改成我的版本</button></div>`}
     ${(r.saved&&(r.score!=null||r.events||r.insight||r.tomorrow||r.adjust||r.gain))?`<div class="saved-card"><div style="font-weight:700;color:var(--main-dark)">✅ 今天已保存的复盘内容（每日总结会同步展示）</div><div class="saved-row">评分 <b>${r.score??"未评"}</b> · 心情 ${moodLabel(r.mood)||"—"}</div>${r.events?`<div class="saved-row">📅 事件：${escapeHtml(r.events)}</div>`:""}${r.insight?`<div class="saved-row">💡 想明白：${escapeHtml(r.insight)}</div>`:""}${r.tomorrow?`<div class="saved-row">▶ 明天：${escapeHtml(r.tomorrow)}</div>`:""}${r.adjust?`<div class="saved-row">📐 要调整：${escapeHtml(r.adjust)}</div>`:""}${r.gain?`<div class="saved-row">🌟 进步：${escapeHtml(r.gain)}</div>`:""}</div>`:""}
     <div class="review-hist">${hist}</div>`;
   document.getElementById("saveReview").onclick=saveReview;
@@ -1699,6 +1700,16 @@ function autoEval(t,r){
   if(parts.length)return parts.join(" ");
   return "填完上面几项，这里会自动给你一句小结。";
 }
+function setOverride(key){
+  const cur=(data.overrides&&data.overrides[key])||"";
+  const v=prompt("改成你自己的版本（留空=恢复自动）：",cur);
+  if(v===null)return;
+  if(!data.overrides)data.overrides={};
+  data.overrides[key]=v.trim();
+  save();renderReview();renderSummary();
+  toast(v.trim()?"已改为你的版本 ✓":"已清除，恢复自动");
+}
+function clearOverride(key){if(data.overrides)delete data.overrides[key];save();renderReview();renderSummary();toast("已恢复自动生成");}
 function saveReview(){
   const r=data.review||{};
   r.events=document.getElementById("rvEvents").value;
@@ -1790,10 +1801,11 @@ function renderSummary(){
       <ul class="sum-list">${t.moments.slice(-6).reverse().map(m=>m.ev?`<li><span class="mk">·</span><div><span class="jump" onclick="switchModule('moments')">${m.emoji||"💭"} <b style="color:var(--main-dark)">事件</b> ${escapeHtml(m.ev)}</span><div class="nxt">发现：${escapeHtml(m.fd||"—")} ｜ 动作：${escapeHtml(m.ac||"—")} ｜ 学会：${escapeHtml(m.ln||"—")}${m.body?` ｜ 身体：${escapeHtml(m.body)}`:""}</div></div></li>`:`<li><span class="mk">·</span><span>${m.emoji||"💭"} ${escapeHtml(m.text||"")}<span class="tm">${m.time}</span></span></li>`).join("")||"<li><span class='mk'>·</span><span>今天还没有记录，去「此时此刻」写一条</span></li>"}</ul></div>
     <div class="sum-card"><h3>📐 要调整的点 <span class="jump" style="font-size:11px;font-weight:400" onclick="switchModule('review')">去填写 →</span></h3>
       <ul class="sum-list">
-        ${r.adjust?`<li><span class="mk">📝</span><span><span class="jump" onclick="switchModule('review')">${escapeHtml(r.adjust)}</span><span class="tm">（你自己写的）</span></span></li>`:""}
-        ${adjPts.map(p=>`<li><span class="mk">→</span><span><span class="jump" onclick="switchModule('review')">${p}</span></span></li>`).join("")||(r.adjust?"":"<li><span class='mk'>·</span><span>今天没有明显要调整的 🎉</span></li>")}
+        ${(data.overrides&&data.overrides.adjustAuto)?`<li><span class="mk">✍️</span><span><span class="jump" onclick="switchModule('review')">${escapeHtml(data.overrides.adjustAuto)}</span><span class="tm">（你的版本）</span></span></li>`:""}
+        ${!(data.overrides&&data.overrides.adjustAuto)&&r.adjust?`<li><span class="mk">📝</span><span><span class="jump" onclick="switchModule('review')">${escapeHtml(r.adjust)}</span><span class="tm">（你自己写的）</span></span></li>`:""}
+        ${(data.overrides&&data.overrides.adjustAuto)?"":(adjPts.map(p=>`<li><span class="mk">→</span><span><span class="jump" onclick="switchModule('review')">${p}</span></span></li>`).join("")||(r.adjust?"":"<li><span class='mk'>·</span><span>今天没有明显要调整的 🎉</span></li>"))}
       </ul>
-      ${!r.adjust?`<div style="font-size:12px;color:var(--text-place);margin-top:6px">以上为自动分析，点击可跳去「今日复盘」写你自己的版本。</div>`:""}
+      ${(data.overrides&&data.overrides.adjustAuto)?`<div style="font-size:12px;color:var(--text-dim);margin-top:6px"><button class="copy-btn" onclick="clearOverride('adjustAuto')">↩ 恢复自动分析</button></div>`:`<div style="font-size:12px;color:var(--text-place);margin-top:6px">以上为自动分析，可点「✏️」改成你的版本：<button class="copy-btn" style="margin-left:4px" onclick="setOverride('adjustAuto')">✏️ 改成我的版本</button></div>`}
     </div>
     <div class="sum-card"><h3>🌟 最大的进步 <span class="jump" style="font-size:11px;font-weight:400" onclick="switchModule('review')">去填写 →</span></h3>
       <div style="font-size:15px;color:var(--main-dark);font-weight:600"><span class="jump" onclick="switchModule('review')">${escapeHtml(r.gain||autoGain(t))}</span></div>
