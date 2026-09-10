@@ -576,7 +576,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.14";
+const APP_VERSION="3.13";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -860,17 +860,13 @@ function computeToday(){
   }
   const comp=all.length?Math.round(all.filter(x=>x.t.done).length/all.length*100):0;
   // 习惯
-  const habits=data.habits.map(h=>{
-    const dk=h.done[todayStr()];
-    return {
-      h,
-      todayDone:!!dk,
-      doneTime:(typeof dk==='string')?dk:(dk?'今天已打卡':''),
-      month:monthCount(h),
-      streak:curStreak(h),
-      best:bestStreak(h)
-    };
-  });
+  const habits=data.habits.map(h=>({
+    h,
+    todayDone:!!h.done[todayStr()],
+    month:monthCount(h),
+    streak:curStreak(h),
+    best:bestStreak(h)
+  }));
   const habitTodayTotal=habits.length;
   const habitTodayDone=habits.filter(x=>x.todayDone).length;
   // 本月习惯完成率（到今天为止的应打卡次数中实际打卡占比）
@@ -1304,7 +1300,7 @@ function renderHabits(){
     const div=document.createElement("div");
     div.className="ht-card"+(x.todayDone?" on":"");
     div.onclick=()=>toggleHabitToday(h.id);
-    div.innerHTML=`<div class="ht-top"><span class="ht-name">${h.icon} ${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><span class="ht-check">${x.todayDone?("✓"+(x.doneTime?" "+x.doneTime:"")):""}</span><span class="ht-del" title="删除习惯">🗑</span></span></div>
+    div.innerHTML=`<div class="ht-top"><span class="ht-name">${h.icon} ${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><span class="ht-check">${x.todayDone?"✓":""}</span><span class="ht-del" title="删除习惯">🗑</span></span></div>
       <div class="ht-stats"><span>连续 <b>${x.streak}</b> 天</span><span>本月 <b>${x.month}</b> 天</span><span>最长 <b>${x.best}</b> 天</span></div>`;
     const delBtn=div.querySelector(".ht-del");
     if(delBtn)delBtn.onclick=e=>{e.stopPropagation();delHabit(h.id);};
@@ -1321,7 +1317,7 @@ function toggleHabitToday(id){
   if(dups.length>1){dups.slice(1).forEach(x=>{x.id=uid();});}
   const h=data.habits.find(x=>x.id===id);if(!h)return;
   const key=todayStr();
-  if(h.done[key])delete h.done[key];else h.done[key]=nowHM();
+  if(h.done[key])delete h.done[key];else h.done[key]=true;
   save();renderHabits();
 }
 function addHabit(){
@@ -1376,7 +1372,7 @@ function toggleHabitDay(id,key){
   const dups=data.habits.filter(x=>x&&x.id===id);
   if(dups.length>1){dups.slice(1).forEach(x=>{x.id=uid();});}
   const h=data.habits.find(x=>x.id===id);if(!h)return;
-  if(h.done[key])delete h.done[key];else h.done[key]=nowHM();
+  if(h.done[key])delete h.done[key];else h.done[key]=true;
   save();renderCalendar();renderHabits();
 }
 
@@ -2359,6 +2355,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.14 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.13 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
