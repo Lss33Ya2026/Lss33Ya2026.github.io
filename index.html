@@ -576,7 +576,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.12";
+const APP_VERSION="3.13";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1273,9 +1273,20 @@ function restoreExamples(){
 
 /* ================= 习惯打卡 ================= */
 function renderHabits(){
+  /* 渲染前自检：若存在重复编号习惯立即拆开（页面层最终保险），并提示用户 */
+  let fixedN=0;
+  {
+    const seen={};
+    data.habits.forEach(x=>{
+      if(!x||!x.id){if(x){x.id=uid();fixedN++;}return;}
+      if(seen[x.id]){x.id=uid();fixedN++;}
+      else seen[x.id]=1;
+    });
+  }
   const t=computeToday();
   let html=`<h2>🔥 习惯打卡</h2>
     <div class="sub">点一下卡片就完成今天的打卡，统计自动更新；日历可补打。</div>
+    <div style="font-size:12px;color:${fixedN?'#c0392b':'var(--text-dim)'};margin:2px 0 8px">${fixedN?('✅ 已自动修复 '+fixedN+' 个重复编号习惯（历史数据问题），现在各习惯独立打卡'):'🔍 习惯数据正常，打卡互不影响'}</div>
     <div class="habit-today" id="habitToday"></div>
     <button class="add-habit" onclick="addHabit()">+ 添加习惯</button>
     <div class="cal" id="calBox" style="margin-top:16px"></div>
@@ -2344,6 +2355,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.12 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.13 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
