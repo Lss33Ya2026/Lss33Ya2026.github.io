@@ -529,6 +529,19 @@ input,textarea,select{font-family:inherit;color:var(--text);}
   </div>
 </div>
 
+<!-- 粘贴导入弹窗 -->
+<div class="modal-mask" id="pasteModal">
+  <div class="modal" style="width:min(560px,92vw)">
+    <h3>📋 粘贴备份导入</h3>
+    <p style="font-size:12px;color:var(--text-dim);margin:6px 0 10px">跨设备同步：手机点「📋 复制备份」→ 发给自己 → 这里粘贴 → 导入（合并去重，不覆盖现有数据）</p>
+    <textarea id="pasteBox" rows="8" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;resize:vertical;line-height:1.5" placeholder='把 {"version":... 开头的备份 JSON 粘贴到这里'></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="pasteCancel">取消</button>
+      <button class="btn-confirm" id="pasteOk">导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 任务操作抽屉 -->
 <div class="sheet-mask" id="sheetMask">
   <div class="sheet">
@@ -1833,7 +1846,9 @@ function renderSummary(){
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
       <button class="copy-btn" onclick="exportData()">📤 导出数据（备份）</button>
+      <button class="copy-btn" onclick="copyBackup()">📋 复制备份</button>
       <button class="copy-btn" onclick="document.getElementById('importFile').click()">📥 导入数据</button>
+      <button class="copy-btn" onclick="openPasteModal()">📋 粘贴导入</button>
     </div>`;
   document.getElementById("summaryInner").innerHTML=html;
   const btn=document.getElementById("copySummary");
@@ -2054,17 +2069,45 @@ function exportData(){
   out.exportedAt=new Date().toISOString();
   data.lastBackupAt=new Date().toISOString();
   save();
-  const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
+  const fileName="个人成长工作台_备份_"+fmtStamp()+".json";
+  const txt=JSON.stringify(out,null,2);
+  try{
+    const file=new File([txt],fileName,{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:"个人成长工作台备份"}).then(()=>toast("已分享备份")).catch(()=>downloadJSON(txt,fileName));
+      return;
+    }
+  }catch(e){}
+  downloadJSON(txt,fileName);
+}
+function downloadJSON(txt,fileName){
+  const blob=new Blob([txt],{type:"application/json"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
-  a.href=url;a.download="个人成长工作台_备份_"+fmtStamp()+".json";
+  a.href=url;a.download=fileName;
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   toast("已导出备份");
 }
+function copyBackup(){
+  const out=JSON.parse(JSON.stringify(data));
+  out.version=APP_VERSION;out.type="full";out.exportedAt=new Date().toISOString();
+  const txt=JSON.stringify(out);
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(()=>toast("备份 JSON 已复制 ✅ 可粘贴发给自己，电脑端用「📋 粘贴导入」")).catch(()=>fallbackCopy(txt));
+  }else fallbackCopy(txt);
+}
+function fallbackCopy(txt){
+  const ta=document.createElement("textarea");ta.value=txt;
+  ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");toast("备份 JSON 已复制 ✅");}catch(e){toast("复制失败，请改用「📤 导出数据（备份）」");}
+  document.body.removeChild(ta);
+}
 function countTasks(tasks){let n=0;if(tasks)for(const c in CATS)if(Array.isArray(tasks[c]))n+=tasks[c].length;return n;}
 function hasRealData(pkg){
   if(pkg.type==="full")return true;
+  if(pkg.exportedAt)return true;
   const t=pkg.tasks||{};
   for(const k in CATS){ if(Array.isArray(t[k])&&t[k].some(x=>!(x&&x.isExample))) return true; }
   if((pkg.habits||[]).some(h=>h.done&&Object.keys(h.done).length)) return true;
@@ -2082,7 +2125,7 @@ function mergeImport(cur,pkg){
     const map={};
     (cur.tasks[c]||[]).forEach(t=>{if(t&&t.id)map[t.id]=t;});
     (pkg.tasks?pkg.tasks[c]||[]:[]).forEach(t=>{
-      if(!t||!t.id)return;
+      if(!t||!t.id){ if(t&&t.name)cur.tasks[c].push(Object.assign({},t,{id:uid()})); return; }
       if(map[t.id]){
         const m=map[t.id];
         if(t.done&&!m.done){m.done=true;m.actual=t.actual;m.actualStartTime=t.actualStartTime;}
@@ -2098,6 +2141,7 @@ function mergeImport(cur,pkg){
   /* 习惯：同 id 合并打卡记录 */
   const hm={}; cur.habits.forEach(h=>{if(h.id)hm[h.id]=h;});
   (pkg.habits||[]).forEach(h=>{
+    if(!h||!h.id){ if(h&&h.name)cur.habits.push(Object.assign({},h,{id:uid()})); return; }
     if(hm[h.id]){Object.assign(hm[h.id].done,h.done||{});if(!hm[h.id].icon)hm[h.id].icon=h.icon;}
     else{cur.habits.push(h);if(h.id)hm[h.id]=h;}
   });
@@ -2134,24 +2178,30 @@ function mergeImport(cur,pkg){
       }else if(pk.id){cur.goals.krs.push(pk);}
     });
   }
+  /* 当天复盘草稿：导入方有内容且当前为空才取（当天闭环状态跟随设备） */
+  if(pkg.review&&(!cur.review||(!cur.review.score&&!cur.review.events&&!cur.review.insight&&!cur.review.tomorrow&&!cur.review.adjust&&!cur.review.gain)))cur.review=pkg.review;
   if(pkg.weekFocus&&pkg.weekFocus.key)cur.weekFocus=pkg.weekFocus;
   return cur;
 }
+function applyImportText(text){
+  let pkg;
+  try{ pkg=JSON.parse((text||"").replace(/^\uFEFF/,"")); }
+  catch(e){ toast("导入失败：文件不是 JSON——如果你用的是「导出今日总结为 Markdown」得到的 .md 文件，请改用「📤 导出数据（备份）」导出后再导入"); return false; }
+  if(!pkg||typeof pkg!=="object"){toast("导入失败：文件格式不对");return false;}
+  if(!hasRealData(pkg)){toast("导入失败：备份里没有有效数据（可能导错了文件）");return false;}
+  data=migrate(mergeImport(data,pkg));
+  save();
+  toast(`已合并导入：${countTasks(data.tasks)}条任务、${data.habits.length}条习惯、${data.moments.length}条觉察、${data.reviews.length}条复盘（同 ID 自动去重，未覆盖现有数据）`);
+  refreshAll();switchModule("summary");
+  return true;
+}
 function importData(file){
   const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      const pkg=JSON.parse(e.target.result);
-      if(!pkg||typeof pkg!=="object"){toast("文件格式不对");return;}
-      if(!hasRealData(pkg)){toast("导入失败：不是有效备份文件");return;}
-      data=migrate(mergeImport(data,pkg));
-      save();
-      toast(`已合并导入：${countTasks(data.tasks)}条任务，${data.habits.length}条习惯，同ID自动去重，未覆盖现有数据`);
-      refreshAll();switchModule("summary");
-    }catch(err){toast("导入失败：不是有效JSON");}
-  };
+  reader.onload=e=>{ applyImportText(e.target.result); };
   reader.readAsText(file);
 }
+function openPasteModal(){document.getElementById("pasteBox").value="";document.getElementById("pasteModal").classList.add("open");document.getElementById("pasteBox").focus();}
+function closePasteModal(){document.getElementById("pasteModal").classList.remove("open");}
 
 /* ================= 初始化 ================= */
 function initAll(){
@@ -2179,6 +2229,8 @@ function bindStatic(){
   // 确认弹窗
   document.getElementById("cfgNo").onclick=closeConfirm;
   document.getElementById("cfgYes").onclick=confirmYes;
+  document.getElementById("pasteCancel").onclick=closePasteModal;
+  document.getElementById("pasteOk").onclick=()=>{const v=document.getElementById("pasteBox").value;if(v&&v.trim()){if(applyImportText(v.trim()))closePasteModal();}else toast("粘贴内容为空");};
   // 操作抽屉
   document.getElementById("sheetMask").onclick=e=>{if(e.target===e.currentTarget)closeSheet();};
   document.getElementById("shClose").onclick=closeSheet;
