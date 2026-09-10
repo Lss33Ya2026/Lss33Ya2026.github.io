@@ -576,7 +576,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.10";
+const APP_VERSION="3.12";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1301,6 +1301,9 @@ function renderHabits(){
   renderCalendar();
 }
 function toggleHabitToday(id){
+  /* 终极防御：若存在重复 id 的习惯（历史坏数据），点击时立即拆开，确保只操作这一个 */
+  const dups=data.habits.filter(x=>x&&x.id===id);
+  if(dups.length>1){dups.slice(1).forEach(x=>{x.id=uid();});}
   const h=data.habits.find(x=>x.id===id);if(!h)return;
   const key=todayStr();
   if(h.done[key])delete h.done[key];else h.done[key]=true;
@@ -1310,7 +1313,8 @@ function addHabit(){
   const name=prompt("新习惯叫什么？（例如：早起喝杯水）");
   if(!name||!name.trim())return;
   const icon=prompt("配个 emoji 图标（如 💧，可留空）","💡");
-  data.habits.push({id:uid(),name:name.trim(),icon:icon&&icon.trim()?icon.trim():"⭐",done:{}});
+  let nid=uid();while(data.habits.some(x=>x.id===nid))nid=uid();
+  data.habits.push({id:nid,name:name.trim(),icon:icon&&icon.trim()?icon.trim():"⭐",done:{}});
   calHabitId=data.habits[data.habits.length-1].id;
   save();renderHabits();
 }
@@ -1354,6 +1358,8 @@ function renderCalendar(){
 }
 function calShift(n){calMonthOffset+=n;renderCalendar();}
 function toggleHabitDay(id,key){
+  const dups=data.habits.filter(x=>x&&x.id===id);
+  if(dups.length>1){dups.slice(1).forEach(x=>{x.id=uid();});}
   const h=data.habits.find(x=>x.id===id);if(!h)return;
   if(h.done[key])delete h.done[key];else h.done[key]=true;
   save();renderCalendar();renderHabits();
@@ -2338,6 +2344,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.10 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.12 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
