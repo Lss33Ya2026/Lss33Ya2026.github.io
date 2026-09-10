@@ -576,7 +576,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="2.0";
+const APP_VERSION="3.10";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -775,6 +775,7 @@ function load(){
   try{ data=JSON.parse(raw); }
   catch(e){ data=defaultData(); save(); return; }
   data=migrate(data);
+  save(); /* 修复结果（id 去重/字段补全）立即落盘，防止"内存已修、存储还是坏数据" */
   if(data.lastDate!==todayStr()) handleNewDay();
 }
 function save(){
@@ -2337,5 +2338,6 @@ load();
 bindStatic();
 initAll();
 </script>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.10 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
