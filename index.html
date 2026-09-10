@@ -542,6 +542,17 @@ input,textarea,select{font-family:inherit;color:var(--text);}
   </div>
 </div>
 
+<!-- 历史记录弹窗 -->
+<div class="modal-mask" id="histModal">
+  <div class="modal" style="width:min(620px,94vw);max-height:80vh;overflow:auto">
+    <h3>🕘 历史记录（昨天的内容都在这里）</h3>
+    <div id="histBody" style="font-size:13px;line-height:1.7"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="histClose">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- 任务操作抽屉 -->
 <div class="sheet-mask" id="sheetMask">
   <div class="sheet">
@@ -741,7 +752,7 @@ function migrate(d){
   if(d.weekFocus===undefined) d.weekFocus=null;
   if(d.lastBackupAt===undefined) d.lastBackupAt=null;
   d.habits.forEach(h=>{ if(!h.id) h.id=uid(); if(!h.done) h.done={}; if(!h.icon) h.icon="⭐"; });
-  d.moments.forEach(m=>{ if(!m.id) m.id=uid(); if(!m.time) m.time=nowHM(); if(m.ev===undefined)m.ev=""; if(m.fd===undefined)m.fd=""; if(m.ac===undefined)m.ac=""; if(m.ln===undefined)m.ln=""; if(m.verify===undefined)m.verify=""; if(m.taskId===undefined)m.taskId=""; if(m.promoted===undefined)m.promoted=false; if(m.body===undefined)m.body=""; });
+  d.moments.forEach(m=>{ if(!m.id) m.id=uid(); if(!m.time) m.time=nowHM(); if(m.date===undefined) m.date=(m.isExample?todayStr():d.lastDate||todayStr()); if(m.ev===undefined)m.ev=""; if(m.fd===undefined)m.fd=""; if(m.ac===undefined)m.ac=""; if(m.ln===undefined)m.ln=""; if(m.verify===undefined)m.verify=""; if(m.taskId===undefined)m.taskId=""; if(m.promoted===undefined)m.promoted=false; if(m.body===undefined)m.body=""; });
   return d;
 }
 
@@ -760,6 +771,7 @@ function save(){
 /* 跨天：驱动闭环的核心 —— 承诺传导 + 调整传导 + 历史补全 */
 function handleNewDay(){
   const today=todayStr();
+  if(data.lastDate>=today)return; /* 防重入：当天已归档过就不再跑，避免覆盖 dayFocus/重置任务 */
   /* 1) 补全漏掉的日子：隔 N 天才打开，中间每天补空快照，历史不断档 */
   let cur=addDays(data.lastDate,1);
   const gap=[];
@@ -1849,6 +1861,7 @@ function renderSummary(){
       <button class="copy-btn" onclick="copyBackup()">📋 复制备份</button>
       <button class="copy-btn" onclick="document.getElementById('importFile').click()">📥 导入数据</button>
       <button class="copy-btn" onclick="openPasteModal()">📋 粘贴导入</button>
+      <button class="copy-btn" onclick="openHistoryModal()">🕘 历史记录</button>
     </div>`;
   document.getElementById("summaryInner").innerHTML=html;
   const btn=document.getElementById("copySummary");
@@ -1934,6 +1947,24 @@ function summaryMD(){
   P("");
   P("## 📅 明天最重要的一件事");
   P(r.tomorrow||"（未写）");
+  /* 昨日回顾：让昨天的内容在今天的总结里也能看到 */
+  const yl=(data.dayLogs||[]).find(l=>l.date===addDays(todayStr(),-1));
+  if(yl){
+    P("");
+    P("## 🕘 昨日回顾（"+yl.date+"）");
+    P("主线："+(yl.main||"（未设置）"));
+    const yt=yl.tasks||[];const ydone=yt.filter(t=>t.done).length;
+    P("完成 "+ydone+"/"+yt.length+(yt.length?"："+yt.slice(0,6).map(t=>t.name).join("、"):""));
+    const yr=yl.review;
+    if(yr){
+      if(yr.insight)P("发现："+yr.insight);
+      if(yr.tomorrow)P("明天最重要："+yr.tomorrow);
+      if(yr.adjust)P("要调整："+yr.adjust);
+      if(yr.gain)P("最大的进步："+yr.gain);
+    }
+    const ym=(data.moments||[]).filter(m=>m.date===yl.date&&!m.isExample);
+    if(ym.length)P("觉察 "+ym.length+" 条");
+  }
   return L.join("\n");
 }
 function exportSummaryMD(){
@@ -2145,9 +2176,17 @@ function mergeImport(cur,pkg){
     if(hm[h.id]){Object.assign(hm[h.id].done,h.done||{});if(!hm[h.id].icon)hm[h.id].icon=h.icon;}
     else{cur.habits.push(h);if(h.id)hm[h.id]=h;}
   });
-  /* 觉察：按 id 去重 */
+  /* 觉察：按 id 去重；缺 id 补 uid 导入；示例数据不导入（会污染真实历史） */
   const mids=new Set(cur.moments.map(m=>m.id));
-  (pkg.moments||[]).forEach(m=>{if(m&&m.id&&!mids.has(m.id)){cur.moments.push(m);mids.add(m.id);}});
+  (pkg.moments||[]).forEach(m=>{
+    if(!m||m.isExample)return;
+    const mid=m.id||("idm"+Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+    if(!mids.has(mid)){
+      const mm=Object.assign({},m,{id:mid});
+      if(mm.date===undefined) mm.date=pkg.lastDate||todayStr();
+      cur.moments.push(mm);mids.add(mid);
+    }
+  });
   /* 复盘：按 date 去重 */
   const rds=new Set(cur.reviews.map(r=>r.date));
   (pkg.reviews||[]).forEach(r=>{if(r&&r.date&&!rds.has(r.date)){cur.reviews.push(r);rds.add(r.date);}});
@@ -2202,6 +2241,42 @@ function importData(file){
 }
 function openPasteModal(){document.getElementById("pasteBox").value="";document.getElementById("pasteModal").classList.add("open");document.getElementById("pasteBox").focus();}
 function closePasteModal(){document.getElementById("pasteModal").classList.remove("open");}
+/* ================= 历史记录 ================= */
+function openHistoryModal(){
+  const map={};
+  (data.dayLogs||[]).forEach(l=>{ if(l&&l.date) map[l.date]=Object.assign({},l); });
+  (data.reviews||[]).forEach(r=>{ if(r&&r.date){ if(!map[r.date])map[r.date]={date:r.date}; map[r.date].review=r; } });
+  const momByDate={};
+  (data.moments||[]).forEach(m=>{ if(m&&m.date&&!m.isExample){ (momByDate[m.date]=momByDate[m.date]||[]).push(m); } });
+  const dates=Object.keys(map).filter(dt=>!isNaN(new Date(dt+"T00:00:00").getTime())).sort().reverse().slice(0,30);
+  let h='';
+  if(!dates.length) h='<div style="color:var(--text-dim)">还没有历史记录，今天的记录会在明天自动归档到这里。</div>';
+  dates.forEach(dt=>{
+    const l=map[dt]||{};
+    const r=l.review||null;
+    const tasks=l.tasks||[];
+    const done=tasks.filter(t=>t.done).length;
+    const moms=momByDate[dt]||[];
+    h+='<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:8px 0">';
+    h+='<div style="font-weight:600">📅 '+dt+(l.goalPct!=null?'　<span style="color:var(--accent)">目标 '+l.goalPct+'%</span>':'')+'</div>';
+    if(l.main) h+='<div>🎯 主线：'+escapeHtml(l.main)+'</div>';
+    h+='<div style="color:var(--text-dim)">✅ 完成 '+done+'/'+tasks.length+(moms.length?'　💡 觉察 '+moms.length+' 条':'')+'</div>';
+    if(tasks.length&&tasks.some(t=>t.reason)) h+='<div>📋 '+tasks.filter(t=>t.reason).slice(0,3).map(t=>escapeHtml(t.name)+'（'+escapeHtml(t.reason)+'）').join('；')+'</div>';
+    if(r){
+      const bits=[];
+      if(r.score) bits.push('评分 '+r.score);
+      if(r.insight) bits.push('💡 '+r.insight);
+      if(r.tomorrow) bits.push('明天：'+r.tomorrow);
+      if(r.adjust) bits.push('调整：'+r.adjust);
+      if(r.gain) bits.push('进步：'+r.gain);
+      h+='<div style="margin-top:4px;color:var(--text-dim)">'+bits.map(escapeHtml).join('　·　')+'</div>';
+    }
+    h+='</div>';
+  });
+  document.getElementById("histBody").innerHTML=h;
+  document.getElementById("histModal").classList.add("open");
+}
+function closeHistoryModal(){document.getElementById("histModal").classList.remove("open");}
 
 /* ================= 初始化 ================= */
 function initAll(){
@@ -2231,6 +2306,7 @@ function bindStatic(){
   document.getElementById("cfgYes").onclick=confirmYes;
   document.getElementById("pasteCancel").onclick=closePasteModal;
   document.getElementById("pasteOk").onclick=()=>{const v=document.getElementById("pasteBox").value;if(v&&v.trim()){if(applyImportText(v.trim()))closePasteModal();}else toast("粘贴内容为空");};
+  document.getElementById("histClose").onclick=closeHistoryModal;
   // 操作抽屉
   document.getElementById("sheetMask").onclick=e=>{if(e.target===e.currentTarget)closeSheet();};
   document.getElementById("shClose").onclick=closeSheet;
