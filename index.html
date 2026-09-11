@@ -284,6 +284,22 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .energy-chip.e-low{background:#e7f0f8;color:#1f6fa8;}
 .promise-tag{font-size:10px;background:#e8ece8;color:#5f7a68;padding:1px 6px;border-radius:4px;margin-right:6px;}
 .step-line{font-size:12px;color:#1f6fa8;background:rgba(41,128,185,.06);border-radius:6px;padding:3px 8px;margin-top:5px;display:inline-block;}
+.tl-date{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700;color:var(--main-dark);font-size:15px;margin:20px 0 6px;}
+.tl-bdg{font-size:11px;background:var(--main-light);color:var(--main-dark);border-radius:10px;padding:2px 8px;font-weight:600;}
+.tl-list{border-left:2px solid var(--border);margin-left:8px;padding-left:18px;display:flex;flex-direction:column;gap:10px;}
+.tl-item{position:relative;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);}
+.tl-item::before{content:"";position:absolute;left:-23px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--main);border:2px solid #fff;}
+.tl-time{font-size:11px;color:var(--text-place);font-weight:700;}
+.tl-head{font-weight:600;font-size:14px;color:var(--text);margin:2px 0 4px;}
+.tl-row{font-size:13px;color:var(--text);margin-top:3px;line-height:1.55;}
+.tl-row b{color:var(--main-dark);margin-right:6px;font-size:12px;}
+.tl-row.dim{color:var(--text-dim);font-size:12px;}
+.tl-review{position:relative;background:var(--main-light);border:1px solid var(--main);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--text);}
+.tl-review::before{content:"";position:absolute;left:-23px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--orange);border:2px solid #fff;}
+.tl-review b{color:var(--main-dark);}
+.tl-review div{margin-top:4px;line-height:1.55;}
+.tl-review div b{font-size:12px;margin-right:6px;}
+@media(max-width:640px){.tl-list{padding-left:12px;}.tl-item::before,.tl-review::before{left:-17px;}}
 .sum-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 .sum-grid .cell{background:var(--bg);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text-dim);}
 .sum-grid .cell b{display:block;font-size:18px;color:var(--main-dark);margin-top:2px;}
@@ -423,6 +439,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
       <button class="nav-item" data-mod="habits"><span class="ico">🔥</span>习惯打卡</button>
       <button class="nav-item" data-mod="goals"><span class="ico">🎯</span>我的目标</button>
       <button class="nav-item" data-mod="moments"><span class="ico">🧠</span>此时此刻</button>
+      <button class="nav-item" data-mod="timeline"><span class="ico">🌳</span>觉察时间线</button>
       <button class="nav-item" data-mod="review"><span class="ico">📝</span>今日复盘</button>
       <button class="nav-item" data-mod="summary"><span class="ico">📊</span>每日总结</button>
       <button class="nav-item" data-mod="weekly"><span class="ico">🗓️</span>周检视</button>
@@ -442,6 +459,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
     <section class="module" id="mod-habits"><div id="habitsInner"></div></section>
     <section class="module" id="mod-goals"><div id="goalsInner"></div></section>
     <section class="module" id="mod-moments"><div id="momentsInner"></div></section>
+    <section class="module" id="mod-timeline"><div id="timelineInner"></div></section>
     <section class="module" id="mod-review"><div id="reviewInner"></div></section>
     <section class="module" id="mod-summary"><div id="summaryInner"></div></section>
     <section class="module" id="mod-weekly"><div id="weeklyInner"></div></section>
@@ -576,7 +594,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.13";
+const APP_VERSION="3.15";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -920,6 +938,7 @@ function renderCurrent(){
   else if(m==="habits")renderHabits();
   else if(m==="goals")renderGoals();
   else if(m==="moments")renderMoments();
+  else if(m==="timeline")renderTimeline();
   else if(m==="review")renderReview();
   else if(m==="summary")renderSummary();
   else if(m==="weekly")renderWeekly();
@@ -1672,6 +1691,56 @@ function fillScaffold(){
 
 /* ================= 今日复盘 ================= */
 function moodLabel(k){return k==="good"?"😊 挺好":k==="ok"?"👍 还行":k==="bad"?"😞 不太好":"";}
+/* 觉察时间线：所有「此时此刻」+ 每日复盘，按日期倒序的树状时间线，跨天永远可回看 */
+function renderTimeline(){
+  const today=todayStr();
+  const allMoments=(data.moments||[]).filter(m=>m&&!m.isExample);
+  const revMap={};
+  (data.reviews||[]).forEach(r=>{if(r&&r.date)revMap[r.date]=r;});
+  const rd=data.review;
+  if(rd&&(rd.saved||rd.score!=null||(rd.insight&&rd.insight.trim())||(rd.adjust&&rd.adjust.trim())||(rd.gain&&rd.gain.trim())||(rd.tomorrow&&rd.tomorrow.trim()))&&!revMap[today])revMap[today]=rd;
+  const byDate={};
+  allMoments.forEach(m=>{const d=m.date||today;(byDate[d]=byDate[d]||[]).push(m);});
+  const taskName={};
+  for(const c in CATS)(data.tasks[c]||[]).forEach(t=>{if(t&&t.id)taskName[t.id]=t.name;});
+  const dates=Object.keys(byDate).sort().reverse();
+  const box=document.getElementById("timelineInner");
+  if(!dates.length){
+    box.innerHTML=`<h2>🌳 觉察时间线</h2><div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看。</div><div class="empty-q">还没有觉察记录，去「此时此刻」写下第一条 👆</div>`;
+    return;
+  }
+  const rows=dates.map(d=>{
+    const ms=(byDate[d]||[]).slice().sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+    const rev=revMap[d];
+    const items=ms.map(m=>{
+      const task=m.taskId?(taskName[m.taskId]?("关联任务："+taskName[m.taskId]):"关联任务：已删除"):"";
+      return `<div class="tl-item">
+        <div class="tl-time">${escapeHtml(m.time||"")}</div>
+        <div class="tl-body">
+          <div class="tl-head">${m.emoji||"💭"}${escapeHtml(m.text||"")}</div>
+          ${m.ev?`<div class="tl-row"><b>事件</b>${escapeHtml(m.ev)}</div>`:""}
+          ${m.fd?`<div class="tl-row"><b>发现</b>${escapeHtml(m.fd)}</div>`:""}
+          ${m.ac?`<div class="tl-row"><b>动作</b>${escapeHtml(m.ac)}</div>`:""}
+          ${m.ln?`<div class="tl-row"><b>学会</b>${escapeHtml(m.ln)}</div>`:""}
+          ${m.body?`<div class="tl-row"><b>身体</b>${escapeHtml(m.body)}</div>`:""}
+          ${m.verify?`<div class="tl-row"><b>验证</b>${m.verify==="y"?"有效":m.verify==="n"?"无效":"待观察"}</div>`:""}
+          ${task?`<div class="tl-row dim">${escapeHtml(task)}</div>`:""}
+        </div>
+      </div>`;
+    }).join("");
+    const revHtml=rev?`<div class="tl-review">
+      <b>📝 当日复盘${rev.score!=null?` · 评分 ${rev.score}`:""}${rev.mood?` · ${moodLabel(rev.mood)}`:""}</b>
+      ${rev.insight&&rev.insight.trim()?`<div><b>想明白</b>${escapeHtml(rev.insight)}</div>`:""}
+      ${rev.gain&&rev.gain.trim()?`<div><b>最大的进步</b>${escapeHtml(rev.gain)}</div>`:""}
+      ${rev.adjust&&rev.adjust.trim()?`<div><b>要调整</b>${escapeHtml(rev.adjust)}</div>`:""}
+      ${rev.tomorrow&&rev.tomorrow.trim()?`<div><b>明天最重要</b>${escapeHtml(rev.tomorrow)}</div>`:""}
+    </div>`:"";
+    return `<div class="tl-date">📅 ${escapeHtml(d)}<span class="tl-bdg">觉察 ${(byDate[d]||[]).length} 条${rev?" · 复盘 ✓":""}</span></div>
+      <div class="tl-list">${items}${revHtml}</div>`;
+  }).join("");
+  box.innerHTML=`<h2>🌳 觉察时间线</h2>
+    <div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看（数据不会跨天丢失）。</div>${rows}`;
+}
 function renderReview(){
   const t=computeToday();
   const r=data.review||{score:null,mood:null,events:"",insight:"",tomorrow:"",adjust:"",gain:""};
@@ -2355,6 +2424,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.13 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.15 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
