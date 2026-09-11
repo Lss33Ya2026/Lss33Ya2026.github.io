@@ -500,6 +500,40 @@ input,textarea,select{font-family:inherit;color:var(--text);}
     </div>
   </div>
 </div>
+<!-- 修改复盘弹窗（觉察时间线用） -->
+<div class="modal-mask" id="reviewEditModal">
+  <div class="modal">
+    <h3>✏️ 修改复盘</h3>
+    <label class="hint-mini">给今天打分（0-10）</label>
+    <div class="score-row" id="reScoreRow">
+      <button class="score-circle" data-v="1" onclick="pickReviewScore(1)">1</button>
+      <button class="score-circle" data-v="2" onclick="pickReviewScore(2)">2</button>
+      <button class="score-circle" data-v="3" onclick="pickReviewScore(3)">3</button>
+      <button class="score-circle" data-v="4" onclick="pickReviewScore(4)">4</button>
+      <button class="score-circle" data-v="5" onclick="pickReviewScore(5)">5</button>
+      <button class="score-circle" data-v="6" onclick="pickReviewScore(6)">6</button>
+      <button class="score-circle" data-v="7" onclick="pickReviewScore(7)">7</button>
+      <button class="score-circle" data-v="8" onclick="pickReviewScore(8)">8</button>
+      <button class="score-circle" data-v="9" onclick="pickReviewScore(9)">9</button>
+      <button class="score-circle" data-v="10" onclick="pickReviewScore(10)">10</button>
+    </div>
+    <label class="hint-mini">今天心情</label>
+    <div class="mood-row" id="reMoodRow">
+      <button class="mood-btn" data-v="good" onclick="pickReviewMood('good')">😊 挺好</button>
+      <button class="mood-btn" data-v="ok" onclick="pickReviewMood('ok')">👍 还行</button>
+      <button class="mood-btn" data-v="bad" onclick="pickReviewMood('bad')">😞 不太好</button>
+    </div>
+    <textarea id="reEvents" class="moment-f" rows="2" placeholder="今天经历了什么？（可选）"></textarea>
+    <textarea id="reInsight" class="moment-f" rows="2" placeholder="想明白的事"></textarea>
+    <textarea id="reGain" class="moment-f" rows="2" placeholder="最大的进步"></textarea>
+    <textarea id="reAdjust" class="moment-f" rows="2" placeholder="要调整的点"></textarea>
+    <textarea id="reTomorrow" class="moment-f" rows="2" placeholder="明天最重要的一件事"></textarea>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn-primary" style="flex:1" onclick="saveReviewEdit()">保存修改</button>
+      <button class="copy-btn" onclick="closeReviewEdit()">取消</button>
+    </div>
+  </div>
+</div>
 <!-- 添加/编辑任务弹窗 -->
 <div class="modal-mask" id="taskModal">
   <div class="modal">
@@ -624,7 +658,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.16";
+const APP_VERSION="3.17";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1771,6 +1805,7 @@ function renderTimeline(){
       ${rev.gain&&rev.gain.trim()?`<div><b>最大的进步</b>${escapeHtml(rev.gain)}</div>`:""}
       ${rev.adjust&&rev.adjust.trim()?`<div><b>要调整</b>${escapeHtml(rev.adjust)}</div>`:""}
       ${rev.tomorrow&&rev.tomorrow.trim()?`<div><b>明天最重要</b>${escapeHtml(rev.tomorrow)}</div>`:""}
+      <div class="tl-acts"><button class="tl-act" onclick="openReviewEdit('${d}')">✏️ 修改</button><button class="tl-act" onclick="askDelReview('${d}')">🗑 删除</button></div>
     </div>`:"";
     return `<div class="tl-date">📅 ${escapeHtml(d)}<span class="tl-bdg">觉察 ${(byDate[d]||[]).length} 条${rev?" · 复盘 ✓":""}</span></div>
       <div class="tl-list">${items}${revHtml}</div>`;
@@ -1820,6 +1855,48 @@ function saveMomentEdit(){
 function askDelMoment(id){
   const m=data.moments.find(x=>x.id===id);if(!m)return;
   setConfirm("确定删除这条觉察？删除后不可恢复。",()=>{delMoment(id);renderTimeline();});
+}
+/* 复盘修改/删除（时间线用） */
+let editReviewDate=null,editReviewScore=null,editReviewMood=null;
+function revFind(date){const r=(data.reviews||[]).find(x=>x.date===date);if(r)return r;if(date===todayStr()&&data.review)return data.review;return null;}
+function openReviewEdit(date){
+  const r=revFind(date);if(!r)return;
+  editReviewDate=date;editReviewScore=r.score!=null?r.score:null;editReviewMood=r.mood||null;
+  document.getElementById("reEvents").value=r.events||"";
+  document.getElementById("reInsight").value=r.insight||"";
+  document.getElementById("reGain").value=r.gain||"";
+  document.getElementById("reAdjust").value=r.adjust||"";
+  document.getElementById("reTomorrow").value=r.tomorrow||"";
+  document.querySelectorAll("#reScoreRow .score-circle").forEach(b=>b.classList.toggle("active",b.dataset.v===String(editReviewScore)));
+  document.querySelectorAll("#reMoodRow .mood-btn").forEach(b=>b.classList.toggle("active",b.dataset.v===editReviewMood));
+  document.getElementById("reviewEditModal").classList.add("open");
+}
+function pickReviewScore(n){editReviewScore=n;document.querySelectorAll("#reScoreRow .score-circle").forEach(b=>b.classList.toggle("active",b.dataset.v===String(n)));}
+function pickReviewMood(k){editReviewMood=k;document.querySelectorAll("#reMoodRow .mood-btn").forEach(b=>b.classList.toggle("active",b.dataset.v===k));}
+function closeReviewEdit(){document.getElementById("reviewEditModal").classList.remove("open");editReviewDate=null;editReviewScore=null;editReviewMood=null;}
+function saveReviewEdit(){
+  const date=editReviewDate;if(!date){closeReviewEdit();return;}
+  const snap={date:date,score:editReviewScore!=null?editReviewScore:null,mood:editReviewMood||null,
+    events:document.getElementById("reEvents").value.trim(),
+    insight:document.getElementById("reInsight").value.trim(),
+    gain:document.getElementById("reGain").value.trim(),
+    adjust:document.getElementById("reAdjust").value.trim(),
+    tomorrow:document.getElementById("reTomorrow").value.trim()};
+  const idx=(data.reviews||[]).findIndex(x=>x.date===date);
+  if(idx>=0)data.reviews[idx]=snap;else{data.reviews=data.reviews||[];data.reviews.push(snap);}
+  if(date===todayStr()){if(!data.review)data.review={};Object.assign(data.review,snap);}
+  save();closeReviewEdit();renderTimeline();renderReview();toast("复盘已更新 ✅");
+}
+function askDelReview(date){
+  const r=revFind(date);if(!r)return;
+  setConfirm("确定删除 "+date+" 的复盘？删除后不可恢复。",()=>{
+    data.reviews=(data.reviews||[]).filter(x=>x.date!==date);
+    if(date===todayStr()&&data.review){
+      delete data.review.score;delete data.review.mood;delete data.review.events;delete data.review.insight;
+      delete data.review.gain;delete data.review.adjust;delete data.review.tomorrow;delete data.review.saved;
+    }
+    save();renderTimeline();renderReview();toast("已删除复盘");
+  });
 }
 function renderReview(){
   const t=computeToday();
@@ -2504,6 +2581,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.16 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.17 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
