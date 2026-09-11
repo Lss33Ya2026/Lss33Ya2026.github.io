@@ -294,6 +294,11 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .tl-row{font-size:13px;color:var(--text);margin-top:3px;line-height:1.55;}
 .tl-row b{color:var(--main-dark);margin-right:6px;font-size:12px;}
 .tl-row.dim{color:var(--text-dim);font-size:12px;}
+.tl-acts{display:flex;gap:6px;margin-top:8px;}
+.tl-act{font-size:12px;border:1px solid var(--border);background:var(--card);color:var(--text-dim);border-radius:8px;padding:4px 10px;cursor:pointer;}
+.tl-act:active{background:var(--main-light);}
+.tl-pager{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:18px;}
+.tl-pager button:disabled{opacity:.4;}
 .tl-review{position:relative;background:var(--main-light);border:1px solid var(--main);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--text);}
 .tl-review::before{content:"";position:absolute;left:-23px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--orange);border:2px solid #fff;}
 .tl-review b{color:var(--main-dark);}
@@ -470,6 +475,31 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 <input type="file" id="importFile" accept="application/json" hidden>
 <div class="toast" id="toast"></div>
 
+<!-- 修改觉察弹窗（觉察时间线用） -->
+<div class="modal-mask" id="momentEditModal">
+  <div class="modal">
+    <h3>✏️ 修改觉察</h3>
+    <textarea id="meEv" class="moment-f" rows="2" placeholder="事件：发生了什么？"></textarea>
+    <textarea id="meFd" class="moment-f" rows="2" placeholder="发现了什么？"></textarea>
+    <textarea id="meAc" class="moment-f" rows="2" placeholder="做了什么动作？"></textarea>
+    <textarea id="meLn" class="moment-f" rows="2" placeholder="学会了什么？"></textarea>
+    <textarea id="meBody" class="moment-f" rows="2" placeholder="身体哪里紧？"></textarea>
+    <label class="hint-mini">情绪（可填 emoji 或文字）</label>
+    <input type="text" id="meEmo" class="review-input" placeholder="如：💡 或 尴尬" style="min-height:42px">
+    <label class="hint-mini">验证：这个动作有效吗？</label>
+    <div class="verify-row" id="meVerifyRow">
+      <button class="verify-btn" data-v="ok">✅ 有效</button>
+      <button class="verify-btn" data-v="no">❌ 无效</button>
+      <button class="verify-btn" data-v="wait">⏳ 待观察</button>
+    </div>
+    <label class="hint-mini">关联任务（可选）</label>
+    <select id="meTask" class="review-input" style="min-height:42px"></select>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn-primary" style="flex:1" onclick="saveMomentEdit()">保存修改</button>
+      <button class="copy-btn" onclick="closeMomentEdit()">取消</button>
+    </div>
+  </div>
+</div>
 <!-- 添加/编辑任务弹窗 -->
 <div class="modal-mask" id="taskModal">
   <div class="modal">
@@ -594,7 +624,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.15";
+const APP_VERSION="3.16";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1692,6 +1722,7 @@ function fillScaffold(){
 /* ================= 今日复盘 ================= */
 function moodLabel(k){return k==="good"?"😊 挺好":k==="ok"?"👍 还行":k==="bad"?"😞 不太好":"";}
 /* 觉察时间线：所有「此时此刻」+ 每日复盘，按日期倒序的树状时间线，跨天永远可回看 */
+let tlPage=0;
 function renderTimeline(){
   const today=todayStr();
   const allMoments=(data.moments||[]).filter(m=>m&&!m.isExample);
@@ -1703,7 +1734,12 @@ function renderTimeline(){
   allMoments.forEach(m=>{const d=m.date||today;(byDate[d]=byDate[d]||[]).push(m);});
   const taskName={};
   for(const c in CATS)(data.tasks[c]||[]).forEach(t=>{if(t&&t.id)taskName[t.id]=t.name;});
-  const dates=Object.keys(byDate).sort().reverse();
+  const allDates=Object.keys(byDate).sort().reverse();
+  const pageSize=5;
+  const pages=Math.max(1,Math.ceil(allDates.length/pageSize));
+  if(tlPage>=pages)tlPage=pages-1;
+  if(tlPage<0)tlPage=0;
+  const dates=allDates.slice(tlPage*pageSize,tlPage*pageSize+pageSize);
   const box=document.getElementById("timelineInner");
   if(!dates.length){
     box.innerHTML=`<h2>🌳 觉察时间线</h2><div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看。</div><div class="empty-q">还没有觉察记录，去「此时此刻」写下第一条 👆</div>`;
@@ -1725,6 +1761,7 @@ function renderTimeline(){
           ${m.body?`<div class="tl-row"><b>身体</b>${escapeHtml(m.body)}</div>`:""}
           ${m.verify?`<div class="tl-row"><b>验证</b>${m.verify==="y"?"有效":m.verify==="n"?"无效":"待观察"}</div>`:""}
           ${task?`<div class="tl-row dim">${escapeHtml(task)}</div>`:""}
+          <div class="tl-acts"><button class="tl-act" onclick="openMomentEdit('${m.id}')">✏️ 修改</button><button class="tl-act" onclick="askDelMoment('${m.id}')">🗑 删除</button></div>
         </div>
       </div>`;
     }).join("");
@@ -1738,8 +1775,51 @@ function renderTimeline(){
     return `<div class="tl-date">📅 ${escapeHtml(d)}<span class="tl-bdg">觉察 ${(byDate[d]||[]).length} 条${rev?" · 复盘 ✓":""}</span></div>
       <div class="tl-list">${items}${revHtml}</div>`;
   }).join("");
+  const pager=pages>1?`<div class="tl-pager">
+    <button class="copy-btn" onclick="tlGo(-1)" ${tlPage===0?'disabled':''}>‹ 上一页</button>
+    <span style="font-size:13px;color:var(--text-dim)">第 ${tlPage+1} / ${pages} 页 · 共 ${allDates.length} 天</span>
+    <button class="copy-btn" onclick="tlGo(1)" ${tlPage>=pages-1?'disabled':''}>下一页 ›</button>
+  </div>`:"";
   box.innerHTML=`<h2>🌳 觉察时间线</h2>
-    <div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看（数据不会跨天丢失）。</div>${rows}`;
+    <div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看（数据不会跨天丢失）；每条可修改/删除。</div>${rows}${pager}`;
+}
+function tlGo(d){tlPage+=d;renderTimeline();}
+/* 编辑觉察（时间线用） */
+let editMomentId=null;
+function openMomentEdit(id){
+  const m=data.moments.find(x=>x.id===id);if(!m)return;
+  editMomentId=id;
+  document.getElementById("meEv").value=m.ev||"";
+  document.getElementById("meFd").value=m.fd||"";
+  document.getElementById("meAc").value=m.ac||"";
+  document.getElementById("meLn").value=m.ln||"";
+  document.getElementById("meBody").value=m.body||"";
+  document.getElementById("meEmo").value=(m.emoji&&m.emoji.length<=4)?m.emoji:"";
+  const sel=document.getElementById("meTask");
+  sel.innerHTML=`<option value="">— 不关联 —</option>`;
+  for(const c in CATS)(data.tasks[c]||[]).forEach(t=>{if(t)sel.insertAdjacentHTML("beforeend",`<option value="${t.id}">${escapeHtml(CATS[c].name+" · "+(t.name||"未命名"))}</option>`);});
+  sel.value=m.taskId||"";
+  document.querySelectorAll("#meVerifyRow .verify-btn").forEach(b=>b.classList.toggle("on",b.dataset.v===(m.verify||"")));
+  document.getElementById("momentEditModal").classList.add("open");
+}
+function closeMomentEdit(){document.getElementById("momentEditModal").classList.remove("open");editMomentId=null;}
+function saveMomentEdit(){
+  const m=data.moments.find(x=>x.id===editMomentId);if(!m){closeMomentEdit();return;}
+  m.ev=document.getElementById("meEv").value.trim();
+  m.fd=document.getElementById("meFd").value.trim();
+  m.ac=document.getElementById("meAc").value.trim();
+  m.ln=document.getElementById("meLn").value.trim();
+  m.body=document.getElementById("meBody").value.trim();
+  const emo=document.getElementById("meEmo").value.trim();
+  if(emo)m.emoji=emo;
+  const v=document.querySelector("#meVerifyRow .verify-btn.on");
+  m.verify=v?v.dataset.v:"";
+  m.taskId=document.getElementById("meTask").value;
+  save();closeMomentEdit();renderTimeline();renderMoments();toast("已修改 ✅");
+}
+function askDelMoment(id){
+  const m=data.moments.find(x=>x.id===id);if(!m)return;
+  setConfirm("确定删除这条觉察？删除后不可恢复。",()=>{delMoment(id);renderTimeline();});
 }
 function renderReview(){
   const t=computeToday();
@@ -2424,6 +2504,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.15 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.16 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
