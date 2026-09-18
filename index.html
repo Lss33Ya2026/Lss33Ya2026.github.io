@@ -156,14 +156,13 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .tasks-footer{margin-top:18px;text-align:center;}
 .restore-btn{border:1px dashed var(--border);background:transparent;color:var(--text-dim);border-radius:10px;min-height:44px;padding:0 20px;cursor:pointer;font-size:13px;}
 /* ============ 习惯 ============ */
-.habit-today{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+.habit-today{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
 .ht-card{
-  flex:1;min-width:150px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  width:100%;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow);
-  transition:border-color .15s,box-shadow .15s;
+  transition:border-color .15s,box-shadow .15s;box-sizing:border-box;
 }
 .ht-card.on{border-color:var(--main);background:var(--main-light);}
-.ht-card.sel{border-color:var(--main);box-shadow:0 0 0 2px var(--main-light),var(--shadow);}
 .ht-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .ht-name{font-weight:700;color:var(--main-dark);font-size:15px;word-break:break-all;display:flex;align-items:center;gap:6px;}
 .ht-ico{display:inline-flex;width:32px;height:32px;border-radius:9px;background:var(--main-light);align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
@@ -176,6 +175,11 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .ht-del:hover,.ht-del:active{background:rgba(234,102,104,.14);color:#c0392b;opacity:1;}
 .add-habit{border:1px dashed var(--main);color:var(--main);background:transparent;border-radius:10px;min-height:44px;padding:0 18px;cursor:pointer;font-size:14px;}
 .cal{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;max-width:440px;}
+.habit-cal{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px;max-width:440px;}
+.hcal-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;}
+.hcal-head .cal-title{flex:1;text-align:center;font-size:13px;}
+.hcal-head .cal-nav{min-width:36px;min-height:36px;}
+.ht-exp{font-size:13px;color:var(--text-dim);padding:8px 6px;user-select:none;line-height:1;}
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;}
 .cal-title{font-weight:700;color:var(--main-dark);font-size:14px;}
 .cal-nav{border:none;background:var(--main-light);color:var(--main-dark);border-radius:8px;min-width:40px;min-height:40px;cursor:pointer;font-size:14px;}
@@ -663,7 +667,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.18";
+const APP_VERSION="3.19";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1373,34 +1377,74 @@ function renderHabits(){
   }
   const t=computeToday();
   let html=`<h2>🔥 习惯打卡</h2>
-    <div class="sub">点卡片切换下方日历 · 点右侧圆钮完成今日打卡 · 点日历日期可补卡/撤销。</div>
+    <div class="sub">点卡片展开/收起它自己的日历 · 点右侧圆钮完成今日打卡 · 日历里的日期可补卡/撤销。每个习惯一张独立日历，数据互不混淆。</div>
     <div style="font-size:12px;color:${fixedN?'#c0392b':'var(--text-dim)'};margin:2px 0 8px">${fixedN?('✅ 已自动修复 '+fixedN+' 个重复编号习惯（历史数据问题），现在各习惯独立打卡'):'🔍 习惯数据正常，打卡互不影响'}</div>
     <div class="habit-today" id="habitToday"></div>
-    <button class="add-habit" onclick="addHabit()">+ 添加习惯</button>
-    <div class="cal" id="calBox" style="margin-top:16px"></div>
-    <div class="cal-tip">💡 日历只显示当前选中习惯的打卡记录，互不混淆</div>`;
+    <button class="add-habit" onclick="addHabit()">+ 添加习惯</button>`;
   const box=document.getElementById("habitsInner");
   box.innerHTML=html;
   const list=document.getElementById("habitToday");
-  if(calHabitId===null&&data.habits[0])calHabitId=data.habits[0].id;
   t.habits.forEach(x=>{
     const h=x.h;
     const div=document.createElement("div");
-    div.className="ht-card"+(x.todayDone?" on":"")+(h.id===calHabitId?" sel":"");
-    div.onclick=()=>selectHabit(h.id);
-    div.innerHTML=`<div class="ht-top"><span class="ht-name"><span class="ht-ico">${h.icon}</span>${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><button class="ht-check" title="今日打卡">${x.todayDone?"✓":""}</button><span class="ht-del" title="删除习惯">🗑</span></span></div>
-      <div class="ht-stats"><span>🔥 连续 <b>${x.streak}</b> 天</span><span>📅 本月 <b>${x.month}</b> 天</span><span>🏆 最长 <b>${x.best}</b> 天</span></div>`;
+    div.className="ht-card"+(x.todayDone?" on":"");
+    div.onclick=()=>toggleHabitCal(h.id);
+    div.innerHTML=`<div class="ht-top"><span class="ht-name"><span class="ht-ico">${h.icon}</span>${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><button class="ht-check" title="今日打卡">${x.todayDone?"✓":""}</button><span class="ht-exp" title="展开/收起日历">${hcalOpen[h.id]?"▾":"▸"}</span><span class="ht-del" title="删除习惯">🗑</span></span></div>
+      <div class="ht-stats"><span>🔥 连续 <b>${x.streak}</b> 天</span><span>📅 本月 <b>${x.month}</b> 天</span><span>🏆 最长 <b>${x.best}</b> 天</span></div>
+      <div class="habit-cal" id="hcal-${h.id}"></div>`;
     const chk=div.querySelector(".ht-check");
     chk.onclick=e=>{e.stopPropagation();toggleHabitToday(h.id);};
     const delBtn=div.querySelector(".ht-del");
     if(delBtn)delBtn.onclick=e=>{e.stopPropagation();delHabit(h.id);};
     list.appendChild(div);
   });
+  Object.keys(hcalOpen).forEach(id=>{if(hcalOpen[id])renderHabitCal(id);});
   if(!data.habits.length){
     list.innerHTML=`<div class="empty-q" style="width:100%">还没有习惯，先添加一个吧 👆</div>`;
   }
   renderCalendar();
 }
+/* ===== v3.19 每习惯独立日历：无共享状态，日历各绑各的 done ===== */
+const hcalOpen={};   // 展开状态 {habitId:true/false}
+const hcalOff={};    // 每张日历独立的月份偏移 {habitId:n}
+function toggleHabitCal(id){
+  const el=document.getElementById("hcal-"+id);
+  if(!el)return;
+  if(hcalOpen[id]){hcalOpen[id]=false;el.innerHTML="";}
+  else{hcalOpen[id]=true;renderHabitCal(id);}
+  const exp=document.querySelector(`.ht-card:has(#hcal-${id}) .ht-exp`);
+  if(exp)exp.textContent=hcalOpen[id]?"▾":"▸";
+}
+function renderHabitCal(id){
+  const el=document.getElementById("hcal-"+id);
+  const h=data.habits.find(x=>x.id===id);
+  if(!el||!h)return;
+  const off=hcalOff[id]||0;
+  const base=new Date();base.setDate(1);base.setMonth(base.getMonth()+off);
+  const y=base.getFullYear(),m=base.getMonth();
+  const first=new Date(y,m,1).getDay();
+  const dim=daysInMonth(y,m);
+  let cells="",cnt=0;
+  for(let i=0;i<first;i++)cells+=`<div class="cal-cell empty"></div>`;
+  for(let d=1;d<=dim;d++){
+    const key=y+"-"+pad(m+1)+"-"+pad(d);
+    const isToday=key===todayStr();
+    const done=h.done[key];
+    if(done)cnt++;
+    cells+=`<div class="cal-cell${isToday?" today":""}${done?" on":""}" onclick="toggleHabitDay('${h.id}','${key}')">${d}</div>`;
+  }
+  el.innerHTML=`<div class="hcal-head">
+      <button class="cal-nav" onclick="habitCalShift('${h.id}',-1)">◀</button>
+      <span class="cal-title">${h.icon} ${escapeHtml(h.name)} · ${y}年${m+1}月 · 已打卡 ${cnt} 天</span>
+      <button class="cal-nav" onclick="habitCalShift('${h.id}',1)">▶</button>
+    </div>
+    <div class="cal-grid">
+      ${["日","一","二","三","四","五","六"].map(w=>`<div class="cal-dow">${w}</div>`).join("")}
+      ${cells}
+    </div>
+    <div class="cal-tip">点击日期可补打卡/撤销</div>`;
+}
+function habitCalShift(id,n){hcalOff[id]=(hcalOff[id]||0)+n;renderHabitCal(id);}
 function toggleHabitToday(id){
   /* 终极防御：若存在重复 id 的习惯（历史坏数据），点击时立即拆开，确保只操作这一个 */
   const dups=data.habits.filter(x=>x&&x.id===id);
@@ -1463,7 +1507,7 @@ function toggleHabitDay(id,key){
   if(dups.length>1){dups.slice(1).forEach(x=>{x.id=uid();});}
   const h=data.habits.find(x=>x.id===id);if(!h)return;
   if(h.done[key])delete h.done[key];else h.done[key]=true;
-  save();renderCalendar();renderHabits();
+  save();renderHabits();
 }
 
 /* ================= 我的目标（季度目标 → 大方向 → 今日行动，一一对应） ================= */
@@ -2588,6 +2632,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.18 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.19 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
