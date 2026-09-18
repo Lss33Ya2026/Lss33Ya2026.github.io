@@ -160,11 +160,15 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .ht-card{
   flex:1;min-width:150px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow);
+  transition:border-color .15s,box-shadow .15s;
 }
 .ht-card.on{border-color:var(--main);background:var(--main-light);}
+.ht-card.sel{border-color:var(--main);box-shadow:0 0 0 2px var(--main-light),var(--shadow);}
 .ht-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.ht-name{font-weight:700;color:var(--main-dark);font-size:15px;word-break:break-all;}
-.ht-check{width:30px;height:30px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;background:var(--card);}
+.ht-name{font-weight:700;color:var(--main-dark);font-size:15px;word-break:break-all;display:flex;align-items:center;gap:6px;}
+.ht-ico{display:inline-flex;width:32px;height:32px;border-radius:9px;background:var(--main-light);align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.ht-check{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;background:var(--card);cursor:pointer;user-select:none;transition:transform .12s,background .12s,border-color .12s;}
+.ht-check:active{transform:scale(.82);}
 .ht-card.on .ht-check{background:var(--done);border-color:var(--done);}
 .ht-stats{font-size:12px;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;}
 .ht-stats b{color:var(--main-dark);}
@@ -177,9 +181,10 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .cal-nav{border:none;background:var(--main-light);color:var(--main-dark);border-radius:8px;min-width:40px;min-height:40px;cursor:pointer;font-size:14px;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
 .cal-dow{text-align:center;font-size:11px;color:var(--text-place);padding:4px 0;}
-.cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-dim);position:relative;}
+.cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-dim);position:relative;transition:background .12s,color .12s;}
 .cal-cell.today{box-shadow:inset 0 0 0 2px var(--blue);}
-.cal-cell.on{background:var(--main-light);color:var(--main-dark);font-weight:700;}
+.cal-cell.on{background:var(--done);color:#fff;font-weight:700;}
+.cal-cell.on .dot{background:#fff;}
 .cal-cell .dot{width:6px;height:6px;border-radius:50%;background:var(--done);position:absolute;bottom:3px;}
 .cal-cell.empty{visibility:hidden;}
 .cal-tip{font-size:12px;color:var(--text-dim);margin-top:12px;}
@@ -658,7 +663,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.17";
+const APP_VERSION="3.18";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1368,12 +1373,12 @@ function renderHabits(){
   }
   const t=computeToday();
   let html=`<h2>🔥 习惯打卡</h2>
-    <div class="sub">点一下卡片就完成今天的打卡，统计自动更新；日历可补打。</div>
+    <div class="sub">点卡片切换下方日历 · 点右侧圆钮完成今日打卡 · 点日历日期可补卡/撤销。</div>
     <div style="font-size:12px;color:${fixedN?'#c0392b':'var(--text-dim)'};margin:2px 0 8px">${fixedN?('✅ 已自动修复 '+fixedN+' 个重复编号习惯（历史数据问题），现在各习惯独立打卡'):'🔍 习惯数据正常，打卡互不影响'}</div>
     <div class="habit-today" id="habitToday"></div>
     <button class="add-habit" onclick="addHabit()">+ 添加习惯</button>
     <div class="cal" id="calBox" style="margin-top:16px"></div>
-    <div class="cal-tip">💡 点击日历上的日期可以补打卡或撤销</div>`;
+    <div class="cal-tip">💡 日历只显示当前选中习惯的打卡记录，互不混淆</div>`;
   const box=document.getElementById("habitsInner");
   box.innerHTML=html;
   const list=document.getElementById("habitToday");
@@ -1381,10 +1386,12 @@ function renderHabits(){
   t.habits.forEach(x=>{
     const h=x.h;
     const div=document.createElement("div");
-    div.className="ht-card"+(x.todayDone?" on":"");
-    div.onclick=()=>toggleHabitToday(h.id);
-    div.innerHTML=`<div class="ht-top"><span class="ht-name">${h.icon} ${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><span class="ht-check">${x.todayDone?"✓":""}</span><span class="ht-del" title="删除习惯">🗑</span></span></div>
-      <div class="ht-stats"><span>连续 <b>${x.streak}</b> 天</span><span>本月 <b>${x.month}</b> 天</span><span>最长 <b>${x.best}</b> 天</span></div>`;
+    div.className="ht-card"+(x.todayDone?" on":"")+(h.id===calHabitId?" sel":"");
+    div.onclick=()=>selectHabit(h.id);
+    div.innerHTML=`<div class="ht-top"><span class="ht-name"><span class="ht-ico">${h.icon}</span>${escapeHtml(h.name)}</span><span style="display:flex;gap:6px;align-items:center"><button class="ht-check" title="今日打卡">${x.todayDone?"✓":""}</button><span class="ht-del" title="删除习惯">🗑</span></span></div>
+      <div class="ht-stats"><span>🔥 连续 <b>${x.streak}</b> 天</span><span>📅 本月 <b>${x.month}</b> 天</span><span>🏆 最长 <b>${x.best}</b> 天</span></div>`;
+    const chk=div.querySelector(".ht-check");
+    chk.onclick=e=>{e.stopPropagation();toggleHabitToday(h.id);};
     const delBtn=div.querySelector(".ht-del");
     if(delBtn)delBtn.onclick=e=>{e.stopPropagation();delHabit(h.id);};
     list.appendChild(div);
@@ -2581,6 +2588,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.17 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.18 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
