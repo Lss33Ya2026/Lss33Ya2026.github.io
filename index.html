@@ -677,7 +677,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.22";
+const APP_VERSION="3.23";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1844,6 +1844,12 @@ let tlPage=0;
 function renderTimeline(){
   const today=todayStr();
   const allMoments=(data.moments||[]).filter(m=>m&&!m.isExample);
+  /* v3.23 兜底：主库空了但日快照里还存着觉察（历史/导入的备份）→ 自动恢复显示 */
+  const snapMoms=[];
+  (data.dayLogs||[]).forEach(l=>{(l.moments||[]).forEach(m=>{if(m&&!m.isExample)snapMoms.push(Object.assign({},m));});});
+  const seenIds=new Set(allMoments.map(m=>m.id));
+  snapMoms.forEach(m=>{if(!seenIds.has(m.id)){seenIds.add(m.id);allMoments.push(m);}});
+  const mainReal=(data.moments||[]).filter(m=>m&&!m.isExample).length;
   const revMap={};
   (data.reviews||[]).forEach(r=>{if(r&&r.date)revMap[r.date]=r;});
   const rd=data.review;
@@ -1859,8 +1865,11 @@ function renderTimeline(){
   if(tlPage<0)tlPage=0;
   const dates=allDates.slice(tlPage*pageSize,tlPage*pageSize+pageSize);
   const box=document.getElementById("timelineInner");
+  const healthHtml=allMoments.length===0
+    ?`<div class="alert-box red">🔍 当前浏览器里没有觉察数据。如果你在手机端写过：<b>手机端打开工作台 → 底部「导出数据」→ 得到 JSON 备份 → 在这里「导入数据」</b>（或把 JSON 发给我帮你导入）。</div>`
+    :(mainReal===0?`<div class="alert-box">⚠️ 觉察主库为空，已自动从历史日快照恢复显示 ${allMoments.length} 条。为防其它设备数据缺失，建议尽快把手机端数据导出并导入到这里。</div>`:"");
   if(!dates.length){
-    box.innerHTML=`<h2>🌳 觉察时间线</h2><div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看。</div><div class="empty-q">还没有觉察记录，去「此时此刻」写下第一条 👆</div>`;
+    box.innerHTML=`<h2>🌳 觉察时间线</h2><div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看。</div>${healthHtml}<div class="empty-q">还没有觉察记录，去「此时此刻」写下第一条 👆</div>`;
     return;
   }
   const rows=dates.map(d=>{
@@ -1900,7 +1909,7 @@ function renderTimeline(){
     <button class="copy-btn" onclick="tlGo(1)" ${tlPage>=pages-1?'disabled':''}>下一页 ›</button>
   </div>`:"";
   box.innerHTML=`<h2>🌳 觉察时间线</h2>
-    <div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看（数据不会跨天丢失）；每条可修改/删除。</div>${rows}${pager}`;
+    <div class="sub">所有「此时此刻」觉察 + 每日复盘，按日期倒序，永远可回看（数据不会跨天丢失）；每条可修改/删除。</div>${healthHtml}${rows}${pager}`;
 }
 function tlGo(d){tlPage+=d;renderTimeline();}
 /* 编辑觉察（时间线用） */
@@ -2637,6 +2646,11 @@ function renderWeekly(){
 function exportData(){
   const out=JSON.parse(JSON.stringify(data));
   out.version=APP_VERSION;
+  /* v3.23 备份完整性：日快照里独有的觉察也并入备份的 moments（防主库为空时备份缺数据） */
+  if(Array.isArray(out.dayLogs)){
+    const ids=new Set((out.moments||[]).map(m=>m&&m.id));
+    out.dayLogs.forEach(l=>{(l.moments||[]).forEach(m=>{if(m&&m.id&&!ids.has(m.id)){out.moments.push(m);ids.add(m.id);}});});
+  }
   out.type="full";
   out.exportedAt=new Date().toISOString();
   data.lastBackupAt=new Date().toISOString();
@@ -2864,6 +2878,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.22 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.23 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
