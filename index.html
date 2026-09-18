@@ -180,6 +180,12 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .hcal-head .cal-title{flex:1;text-align:center;font-size:13px;}
 .hcal-head .cal-nav{min-width:36px;min-height:36px;}
 .ht-exp{font-size:13px;color:var(--text-dim);padding:8px 6px;user-select:none;line-height:1;}
+.tp-card{border:1px dashed var(--main);border-radius:10px;padding:10px;margin:6px 0;background:var(--bg);}
+.tp-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;}
+.tp-row input{width:18px;height:18px;margin-top:1px;flex-shrink:0;cursor:pointer;}
+.tp-row label{flex:1;line-height:1.5;}
+.verdict-label{font-size:16px;font-weight:700;margin-top:4px;}
+.verdict-txt{font-size:13px;color:var(--text-dim);margin-top:4px;line-height:1.5;}
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;}
 .cal-title{font-weight:700;color:var(--main-dark);font-size:14px;}
 .cal-nav{border:none;background:var(--main-light);color:var(--main-dark);border-radius:8px;min-width:40px;min-height:40px;cursor:pointer;font-size:14px;}
@@ -667,7 +673,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.19";
+const APP_VERSION="3.20";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -906,6 +912,17 @@ function handleNewDay(){
   (data.moments||[]).filter(m=>m.date===data.lastDate).forEach(m=>snap.moments.push({ev:m.ev,fd:m.fd,ac:m.ac,ln:m.ln,text:m.text,emoji:m.emoji}));
   data.dayLogs.push(snap);
   if(data.dayLogs.length>90) data.dayLogs=data.dayLogs.slice(-90);
+  /* 2.5) 优先执行：昨晚在「每日总结」里保存的明日计划（含延续任务/修正注意/主线） */
+  const tp=data.tomorrowPlan;
+  if(tp&&tp.date===today){
+    (tp.tasks||[]).forEach(nm=>{nm=(nm||"").trim();if(nm&&!data.tasks.create.some(t=>t.name===nm))data.tasks.create.push({id:uid(),name:nm,diff:"mid",priority:"p3",timeSlot:recommendSlot("create","p3"),time:null,est:30,done:false,actual:null,actualStartTime:null,history:[],reason:null,isExample:false,energy:"mid",fromPromise:true});});
+    const tpm=(tp.main||"").trim();
+    if(tpm&&!data.tasks.create.some(t=>t.name===tpm))data.tasks.create.unshift({id:uid(),name:tpm,diff:"mid",priority:"p3",timeSlot:recommendSlot("create","p3"),time:null,est:30,done:false,actual:null,actualStartTime:null,history:[],reason:null,isExample:false,energy:"mid",fromPromise:true});
+    const items=(tp.notes||[]).filter(n=>n&&n.text&&n.text.trim()).map(n=>({src:n.src||"plan",text:n.text.trim()}));
+    if(items.length)data.dayFocus={date:today,items:items};else data.dayFocus=null;
+    data.dayMain=null;data.review=null;delete data.tomorrowPlan;
+    data.lastDate=today;save();return;
+  }
   /* 3) 承诺传导：昨晚写的"明天最重要的一件事"→ 自动成为今天的第一个任务 */
   const r=data.review||{};
   const promiseTxt=(r.tomorrow||"").trim();
@@ -2092,6 +2109,80 @@ function autoGain(t){
   if(t.doneList.length) return `完成了 ${t.doneList.length} 项任务，完成率 ${t.comp}%`;
   return "今天先好好休息，明天从一件小事重新开始";
 }
+/* ===== v3.20 每日总结三段式闭环引擎 ===== */
+function dailyVerdict(t,r){
+  const comp=t.comp||0;const score=r.score;
+  const undoneUrgent=t.undoneList.filter(x=>x.t.priority==="p1"||x.t.priority==="p2").length;
+  let color,label;
+  if(score!=null&&score<=3){color="#c0392b";label="今天失衡，需要正视";}
+  else if(comp>=80&&(score==null||score>=7)){color="#27ae60";label="今天很扎实";}
+  else if(comp>=60||(score!=null&&score>=5)){color="#e67e22";label="及格偏上，还有缺口";}
+  else{color="#c0392b";label="今天偏散，先收线";}
+  const why=[];
+  if(undoneUrgent)why.push(undoneUrgent+" 件紧急事没闭环");
+  if(t.habitTodayTotal&&t.habitTodayDone<t.habitTodayTotal)why.push("习惯断了 "+(t.habitTodayTotal-t.habitTodayDone)+" 项");
+  if(t.goalPct===0&&t.krs.length)why.push("目标今天零推进");
+  if(!t.moments.length)why.push("没有觉察记录");
+  if(t.estTotal>0&&t.actTotal>t.estTotal*1.3)why.push("时间超支");
+  const txt=why.length?"主要缺口："+why.slice(0,2).join("、")+"。":"各维度都在线，保持节奏。";
+  return {color:color,label:label,txt:txt};
+}
+function rootCauses(t){
+  const map={};
+  t.undoneList.forEach(({t:task})=>{const r=(task.reason||"").trim()||"未说明原因";map[r]=(map[r]||0)+1;});
+  return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+}
+function renderTomorrowEngine(t,r,tp){
+  const carry=tp?tp.tasks:(t.undoneList.filter(x=>x.t.priority==="p1"||x.t.priority==="p2").slice(0,4).map(x=>x.t.name));
+  const adjTxt=(r.adjust||"").trim();
+  let insightTxt="";
+  for(let i=t.moments.length-1;i>=0;i--){if((t.moments[i].ln||"").trim()){insightTxt=t.moments[i].ln.trim();break;}}
+  let notes=tp?tp.notes:({x:adjTxt,insightTxt:insightTxt}.x||({x:adjTxt,insightTxt:insightTxt}.insightTxt)?[{src:"review",text:adjTxt}].concat(insightTxt?[{src:"insight",text:insightTxt}]:[]).filter(n=>n.text&&n.text.trim()):[]);
+  const mainVal=tp?tp.main:(r.tomorrow||"");
+  const carryHtml=(carry||[]).filter(Boolean).map(nm=>`<div class="tp-row"><input type="checkbox" class="tp-task" checked value="${escapeHtml(nm)}"><label>${escapeHtml(nm)}</label></div>`).join("")||"<div style='font-size:12px;color:var(--text-place)'>今天没有紧急未完成任务</div>";
+  const notesHtml=(notes||[]).filter(n=>n&&n.text&&n.text.trim()).map(n=>`<div class="tp-row"><input type="checkbox" class="tp-note" checked data-src="${escapeHtml(n.src||'plan')}" value="${escapeHtml(n.text)}"><label>${escapeHtml(n.text)}</label></div>`).join("")||"<div style='font-size:12px;color:var(--text-place)'>没有要带走的调整/觉察</div>";
+  const savedTxt=tp?`<div style="font-size:12px;color:var(--done);margin:6px 0">✅ 已保存明日计划（${tp.date}），明早自动生效；可改后再存</div>`:"";
+  return `<div class="sum-card" style="border:1px solid var(--main);border-radius:12px">
+    <h3>🚀 明日引擎 <span class="n">今天的闭环出口——先定明天的预案，再关今天的页面</span></h3>
+    ${savedTxt}
+    <div style="font-weight:600;color:var(--main-dark);font-size:13px">① 延续 · 没做完的紧急事，明天接着做</div>
+    ${carryHtml}
+    <div style="font-weight:600;color:var(--main-dark);font-size:13px;margin-top:8px">② 修正 · 今天的调整/觉察，明天带着验证</div>
+    ${notesHtml}
+    <div style="font-weight:600;color:var(--main-dark);font-size:13px;margin-top:8px">③ 主线 · 明天最重要的一件事</div>
+    <input class="review-input" id="tpMain" style="min-height:46px" placeholder="只写一件，越具体越好" value="${escapeHtml(mainVal||"")}">
+    <button class="btn-primary" style="width:100%;margin-top:10px" onclick="saveTomorrowPlan()">💾 保存为明日计划</button>
+    <div style="font-size:12px;color:var(--text-place);margin-top:6px">不保存也可以：明早会自动沿用昨晚复盘里的「明天最重要 + 要调整」。保存则按你勾选的精确生效。</div>
+  </div>`;
+}
+function saveTomorrowPlan(){
+  const tm=addDays(todayStr(),1);
+  const tasks=[...document.querySelectorAll(".tp-task:checked")].map(b=>b.value);
+  const notes=[...document.querySelectorAll(".tp-note:checked")].map(b=>({src:b.dataset.src||"plan",text:b.value}));
+  const main=(document.getElementById("tpMain").value||"").trim();
+  if(!tasks.length&&!notes.length&&!main){toast("预案是空的，明天会走原来的自动传导");return;}
+  data.tomorrowPlan={date:tm,tasks:tasks,notes:notes,main:main};
+  save();renderSummary();toast("✅ 明日计划已保存，明早自动生效");
+}
+function weekTrendHTML(t,r){
+  const logs=(data.dayLogs||[]).slice(-6);
+  const rows=logs.map(l=>{
+    if(!l.tasks||!l.tasks.length)return "";
+    const comp=Math.round(l.tasks.filter(x=>x.done).length/l.tasks.length*100);
+    const sc=l.review&&l.review.score!=null?l.review.score:null;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <span style="font-size:12px;color:var(--text-dim);width:84px;flex-shrink:0">${l.date.slice(5)}</span>
+      <div style="flex:1;height:14px;background:var(--border);border-radius:7px;overflow:hidden"><div style="width:${comp}%;height:100%;background:${comp>=80?"var(--done)":comp>=50?"#e67e22":"#c0392b"};border-radius:7px"></div></div>
+      <span style="font-size:12px;min-width:78px;text-align:right">${comp}%${sc!=null?(" · "+sc+"分"):""}</span>
+    </div>`;
+  }).join("");
+  const todayRow=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <span style="font-size:12px;color:var(--main-dark);width:84px;flex-shrink:0;font-weight:600">今天</span>
+      <div style="flex:1;height:14px;background:var(--border);border-radius:7px;overflow:hidden"><div style="width:${t.comp}%;height:100%;background:${t.comp>=80?"var(--done)":t.comp>=50?"#e67e22":"#c0392b"};border-radius:7px"></div></div>
+      <span style="font-size:12px;min-width:78px;text-align:right;font-weight:600;color:var(--main-dark)">${t.comp}%${r.score!=null?(" · "+r.score+"分"):""}</span>
+    </div>`;
+  return `<div class="sum-card"><h3>📈 最近 7 天趋势 <span class="n">完成率 · 评分（含今天）</span></h3>${rows}${todayRow}</div>`;
+}
 /* ================= 每日总结（六模块汇总之地） ================= */
 function renderSummary(){
   const t=computeToday();
@@ -2106,6 +2197,15 @@ function renderSummary(){
   const yestComp=yestLog&&yestLog.tasks&&yestLog.tasks.length?Math.round(yestLog.tasks.filter(x=>x.done).length/yestLog.tasks.length*100):null;
   const trendTxt=yestComp===null?"":t.comp>yestComp?`<span style="color:var(--done)">▲ 较昨日 +${t.comp-yestComp}%</span>`:t.comp<yestComp?`<span style="color:var(--undone)">▼ 较昨日 ${t.comp-yestComp}%</span>`:`<span style="color:var(--text-place)">＝ 与昨日持平</span>`;
   const bakNeed=!data.lastBackupAt||(Date.now()-new Date(data.lastBackupAt).getTime())>7*86400000;
+  const vd=dailyVerdict(t,r);
+  const verdictHtml=`<div class="sum-card" style="border-left:4px solid ${vd.color}"><h3>⚖️ 今日判决</h3><div class="verdict-label" style="color:${vd.color}">${vd.label}</div><div class="verdict-txt">${vd.txt}</div></div>`;
+  const roots=rootCauses(t);
+  const wc={};
+  (data.taskHistory||[]).forEach(x=>{if(x.reason&&x.date>=addDays(todayStr(),-7)){wc[x.reason]=(wc[x.reason]||0)+1;}});
+  const rootsHtml=roots.length?`<div class="sum-card"><h3>🔍 归因链 <span class="n">为什么没做完 · 根因聚合</span></h3><ul class="sum-list">${roots.map(([rs,cnt])=>`<li><span class="mk">→</span><span>${escapeHtml(rs)}<span class="tm">×${cnt} 个任务</span>${(wc[rs]||0)>=2?` <span style="color:#c0392b;font-size:11px">⚠️ 本周已 ${wc[rs]} 次，是模式不是偶发</span>`:""}</span></li>`).join("")}</ul></div>`:"";
+  const tp=data.tomorrowPlan&&data.tomorrowPlan.date===addDays(todayStr(),1)?data.tomorrowPlan:null;
+  const engineHtml=renderTomorrowEngine(t,r,tp);
+  const trendHtml=weekTrendHTML(t,r);
   const bakBanner=bakNeed?`<div class="alert-box">💾 数据只存在当前浏览器里，上次备份已超过 7 天。建议点底部「导出数据」存一份；换手机/电脑时用「导入数据」会自动合并，不会覆盖。</div>`:"";
   const html=`
     <h2>📊 每日总结</h2>
@@ -2115,12 +2215,14 @@ function renderSummary(){
       <div class="ov-ring" style="width:84px;height:84px;margin:0 auto;--p:${t.comp}"><b style="font-size:18px">${t.comp}%</b></div>
       <div style="margin-top:8px;font-size:13px;color:var(--text-dim)">今日完成率（自动统计）${trendTxt?" · "+trendTxt:""}</div>
     </div>
+    ${verdictHtml}
     <button class="btn-primary" id="btnSummaryMD" style="width:100%;margin-bottom:14px">📤 导出今日总结为 Markdown（存进 Obsidian 知识库，AI 复盘可直接读取）</button>
     <div class="sum-card"><h3>✅ 今日完成的任务（${t.doneList.length}）</h3><ul class="sum-list">      ${t.doneList.map(({t:task,c})=>`<li><span class="mk">✓</span><span>${escapeHtml(task.name||"未命名任务")}<span class="tm">预计${task.est!=null?task.est:30}/实际${task.actual!=null?task.actual:(task.est!=null?task.est:30)}min${task.actualStartTime?(" · "+escapeHtml(task.actualStartTime)):""}</span></span></li>`).join("")||"<li><span class='mk'>·</span><span>今天还没有完成的任务</span></li>"}
     </ul></div>
     <div class="sum-card"><h3>⬜ 今日未完成（${undoneN}）<span class="n">原因与下一步自动带出</span></h3><ul class="sum-list">
       ${t.undoneList.map(({t:task,c})=>`<li class="undone"><span class="mk">✕</span><span><span class="jump" onclick="switchModule('tasks')">${escapeHtml(task.name||"未命名任务")}</span>（${CATS[c].name}）${task.reason?`<span class="rs">· ${escapeHtml(task.reason)}</span>`:""}<span class="tm">${task.time?escapeHtml(task.time):(SLOT[task.timeSlot]?SLOT[task.timeSlot].range:"")}</span><div class="nxt">→ 下一步：${nextStepFor(task)}</div></span></li>`).join("")||"<li><span class='mk'>·</span><span>全部完成啦 🎉</span></li>"}
     </ul></div>
+    ${rootsHtml}
     <div class="sum-card"><h3>🔥 今日习惯（${t.habitTodayDone}/${t.habitTodayTotal}）<span class="n">本月完成率 ${t.habitMonthRate}%</span></h3>
       <ul class="sum-list">
         ${doneHabits.map(x=>`<li><span class="mk">✓</span><span><span class="jump" onclick="switchModule('habits')">${x.h.icon} ${escapeHtml(x.h.name)}</span><span class="tm">连续 ${x.streak} 天</span></span></li>`).join("")}
@@ -2145,6 +2247,7 @@ function renderSummary(){
       <div style="font-size:15px;color:var(--main-dark);font-weight:600"><span class="jump" onclick="switchModule('review')">${escapeHtml(r.gain||autoGain(t))}</span></div>
       ${r.gain?"":"<div style='font-size:12px;color:var(--text-place);margin-top:4px'>（自动候选，可在「今日复盘」里写你自己认定的进步）</div>"}
     </div>
+    ${trendHtml}
     <div class="sum-card"><h3>📈 今日数据</h3>
       <div class="sum-grid">
         <div class="cell">今日评分<b>${r.score??"未评"}</b></div>
@@ -2156,10 +2259,9 @@ function renderSummary(){
       </div>
       <div style="font-size:13px;color:var(--text-dim);margin-top:8px">${diff>=0?("✅ 比预计省下 "+diff+"min"):("⏱ 比预计超出 "+(-diff)+"min")}</div>
     </div>
+    ${engineHtml}
     <div class="sum-card"><h3>🌟 今日最重要的发现</h3>
       <div style="font-size:14px">${r.insight?escapeHtml(r.insight):"（在今日复盘里写下来会更清楚）"}</div>
-      <div style="font-weight:600;color:var(--main-dark);margin-top:10px">明天最重要的一件事：</div>
-      <div style="font-size:14px">${r.tomorrow?escapeHtml(r.tomorrow):"（还没定，可从未完成的紧急任务里选一件）"}</div>
       <button class="copy-btn" id="copySummary">📋 复制总结</button>
     </div>
     <div class="sum-card"><h3>🗂 历史总结（最近 14 天）</h3>
@@ -2632,6 +2734,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.19 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.20 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
