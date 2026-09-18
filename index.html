@@ -181,6 +181,10 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .hcal-head .cal-nav{min-width:36px;min-height:36px;}
 .ht-exp{font-size:13px;color:var(--text-dim);padding:8px 6px;user-select:none;line-height:1;}
 .tp-card{border:1px dashed var(--main);border-radius:10px;padding:10px;margin:6px 0;background:var(--bg);}
+.audit-box{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;}
+.audit-chip{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text-dim);cursor:pointer;user-select:none;}
+.audit-chip.ok{border-color:var(--done);background:rgba(82,196,26,.08);color:var(--done);font-weight:600;cursor:default;}
+.ln-tag{font-size:12px;background:var(--main-light);color:var(--main-dark);border-radius:8px;padding:4px 9px;}
 .tp-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;}
 .tp-row input{width:18px;height:18px;margin-top:1px;flex-shrink:0;cursor:pointer;}
 .tp-row label{flex:1;line-height:1.5;}
@@ -673,7 +677,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.20";
+const APP_VERSION="3.21";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -1966,6 +1970,23 @@ function askDelReview(date){
     save();renderTimeline();renderReview();toast("已删除复盘");
   });
 }
+function loopAuditHTML(t,r){
+  const steps=[
+    {k:"①计划",ok:!!(data.dayMain&&(data.dayMain.text||"").trim()),mod:"tasks",lab:"主线已锁定"},
+    {k:"②行动",ok:(t.all.length?t.comp>=60:(t.habitTodayDone>0)),mod:"tasks",lab:"完成率 "+t.comp+"%"},
+    {k:"③反思验证",ok:t.moments.length>0,mod:"moments",lab:t.moments.length+" 条觉察"},
+    {k:"④沉淀",ok:!!((r.adjust||"").trim())||!!(data.overrides&&data.overrides.adjustAuto)||t.moments.some(m=>(m.ln||"").trim()),mod:"moments",lab:"调整/学会已存"},
+    {k:"⑤复盘总结",ok:(r.score!=null&&((r.tomorrow||"").trim())),mod:"review",lab:"打分+定明天"}
+  ];
+  const doneN=steps.filter(s=>s.ok).length;
+  const chips=steps.map(s=>`<span class="audit-chip${s.ok?" ok":" off"}"${s.ok?"":" onclick=\"switchModule('"+s.mod+"')\""}>${s.ok?"✓":"✗"} ${s.k}${s.ok?"":" · 去补"}</span>`).join("");
+  const msg=doneN>=5?"五步全闭环，今天完整走完了 👏":doneN>=4?"只差一步，补完就闭环了":doneN>=2?"今天只闭环了 "+doneN+" 步，缺口在标红的步——先跳过去补，再回来打分":"今天还没闭环，先从标红的步补起";
+  return `<div class="audit-box">
+    <div style="font-weight:700;color:var(--main-dark);font-size:14px">🔒 今日闭环校验 <span style="font-weight:400;font-size:12px;color:var(--text-dim)">${doneN}/5 步闭环</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chips}</div>
+    <div style="font-size:12px;color:${doneN>=4?"var(--done)":doneN>=2?"#e67e22":"#c0392b"};margin-top:8px">${msg}</div>
+  </div>`;
+}
 function renderReview(){
   const t=computeToday();
   const r=data.review||{score:null,mood:null,events:"",insight:"",tomorrow:"",adjust:"",gain:""};
@@ -1974,10 +1995,19 @@ function renderReview(){
   const undoneP1=t.undoneList.filter(x=>x.t.priority==="p1"||x.t.priority==="p2").slice(0,3);
   const suggest=undoneP1.length?`<div class="rv-hint" onclick="fillTomorrow()">💡 还没做完的紧急事：${undoneP1.map(x=>escapeHtml(x.t.name)).join("、")} —— 点这里把第一件设为明天的重点</div>`:"";
   const evalTxt=autoEval(t,r);
+  const auditHtml=loopAuditHTML(t,r);
+  const vd=dailyVerdict(t,r);
+  const verdictHtml=`<div class="sum-card" style="border-left:4px solid ${vd.color};margin-bottom:12px"><h3>⚖️ 今日判决（参考）</h3><div class="verdict-label" style="color:${vd.color}">${vd.label}</div><div class="verdict-txt">${vd.txt}</div></div>`;
+  const tp2=data.tomorrowPlan&&data.tomorrowPlan.date===addDays(todayStr(),1)?data.tomorrowPlan:null;
+  const engineHtml2=renderTomorrowEngine(t,r,tp2);
+  const lnTags=t.moments.map(m=>(m.ln||"").trim()).filter(Boolean).slice(-5);
+  const lnHtml=lnTags.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 10px">${lnTags.map(x=>`<span class="ln-tag">💡 ${escapeHtml(x)}</span>`).join("")}</div>`:"";
   const hist=data.reviews.slice().reverse().slice(0,14).map(h=>{const snip=(h.events||h.insight||h.adjust||"").slice(0,22);return `<div class="rh" onclick="alert('${escapeHtml((h.events||h.insight||h.adjust||"今天没有补充内容")).replace(/'/g,"")}')"><b>${h.date}</b> · 评分 ${h.score??"-"} · ${moodLabel(h.mood)||"—"}${snip?`<span style="color:var(--text-dim)"> · ${escapeHtml(snip)}</span>`:""}</div>`;}).join("");
   document.getElementById("reviewInner").innerHTML=`
     <h2>📝 今日复盘</h2>
     <div class="sub">白天过完了，花一分钟回头看看。⭐ 填完「打分 + 明天最重要的一件事 + 一句反思」，顶部闭环⑤才判定完成——反思至少写一个（想明白/要调整/进步）。</div>
+    ${auditHtml}
+    ${verdictHtml}
     <div class="ctx-strip">
       <span>任务 <b>${t.doneList.length}/${t.all.length}</b></span>
       <span>习惯 <b>${t.habitTodayDone}/${t.habitTodayTotal}</b></span>
@@ -1992,7 +2022,8 @@ function renderReview(){
     <div style="font-weight:600;color:var(--main-dark)">今天发生了什么重要的事？<span style="font-weight:400;font-size:12px;color:var(--text-place)">（已自动带入今日觉察，不用重写）</span></div>
     <div class="ctx-strip" style="margin-bottom:8px">${t.moments.length?t.moments.slice(-4).reverse().map(m=>`<span style="background:var(--bg);border-radius:6px;padding:4px 8px;margin:2px">${m.emoji||"💭"} ${escapeHtml(m.ev||m.text||"—")}${m.body?` <span style="color:#1f6fa8">🫀${escapeHtml(m.body)}</span>`:""}</span>`).join(""):`<span style="color:var(--text-place)">今天还没有觉察记录，去「此时此刻」写一条</span>`}</div>
     <textarea class="review-input" id="rvEvents" placeholder="（可选）觉察之外还想补充的重要事件：如：终于把拖了三天的复盘写完了">${escapeHtml(r.events||"")}</textarea>
-    <div style="font-weight:600;color:var(--main-dark)">今天有没有想明白什么？</div>
+    <div style="font-weight:600;color:var(--main-dark)">今天有没有想明白什么？<span style="font-weight:400;font-size:12px;color:var(--text-place)">（今日觉察里的「学会」已在下面，不用重写）</span></div>
+    ${lnHtml}
     <textarea class="review-input" id="rvInsight" placeholder="例如：原来我一直在等“想清楚”才动，其实动起来才想得清">${escapeHtml(r.insight||"")}</textarea>
     <button class="copy-btn" id="btnImportInsight" style="margin:4px 0 10px">📥 从今日觉察导入「学会」汇总（不用重写）</button>
     <div style="font-weight:600;color:var(--main-dark)">明天最重要的一件事是什么？<span style="color:#c0392b">⭐必填</span><span style="font-weight:400;font-size:12px;color:var(--text-place)">（会自动变成明天的第一个任务）</span></div>
@@ -2003,6 +2034,7 @@ function renderReview(){
     <input class="review-input" id="rvGain" style="min-height:46px" placeholder="哪怕很小：如：第一次主动在群里发言" value="${escapeHtml(r.gain||"")}">
     ${suggest}
     <button class="btn-primary" id="saveReview">💾 保存复盘</button>
+    ${engineHtml2}
     ${(data.overrides&&data.overrides.eval)?`<div class="auto-eval"><span style="font-weight:700;color:var(--main-dark)">✍️ 你的版本：</span>${escapeHtml(data.overrides.eval)} <button class="copy-btn" style="margin-left:6px" onclick="clearOverride('eval')">↩ 恢复自动</button></div>`:`<div class="auto-eval">${evalTxt}<button class="copy-btn" style="margin-left:8px" onclick="setOverride('eval')">✏️ 改成我的版本</button></div>`}
     ${(r.saved&&(r.score!=null||r.events||r.insight||r.tomorrow||r.adjust||r.gain))?`<div class="saved-card"><div style="font-weight:700;color:var(--main-dark)">✅ 今天已保存的复盘内容（每日总结会同步展示）</div><div class="saved-row">评分 <b>${r.score??"未评"}</b> · 心情 ${moodLabel(r.mood)||"—"}</div>${r.events?`<div class="saved-row">📅 事件：${escapeHtml(r.events)}</div>`:""}${r.insight?`<div class="saved-row">💡 想明白：${escapeHtml(r.insight)}</div>`:""}${r.tomorrow?`<div class="saved-row">▶ 明天：${escapeHtml(r.tomorrow)}</div>`:""}${r.adjust?`<div class="saved-row">📐 要调整：${escapeHtml(r.adjust)}</div>`:""}${r.gain?`<div class="saved-row">🌟 进步：${escapeHtml(r.gain)}</div>`:""}</div>`:""}
     <div class="review-hist">${hist}</div>`;
@@ -2734,6 +2766,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.20 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.21 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
