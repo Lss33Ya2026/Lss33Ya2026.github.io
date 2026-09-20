@@ -188,6 +188,13 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 .quarter-sub-input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--card);color:var(--text);}
 .kr-del{margin-left:8px;color:var(--text-place);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:6px;user-select:none;}
 .kr-del:hover{color:#c0392b;background:rgba(192,57,43,.08);}
+.hist-card{border:1px solid var(--border);border-radius:10px;margin:6px 0;background:var(--card);overflow:hidden;}
+.hist-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--main-dark);user-select:none;}
+.hist-head:hover{background:rgba(0,0,0,.02);}
+.hist-arrow{color:var(--text-place);font-size:12px;transition:transform .15s;}
+.hist-body{padding:8px 12px 12px;font-size:13px;border-top:1px dashed var(--border);}
+.hist-mom{padding:3px 0;border-bottom:1px dotted var(--border);}
+.hist-mom:last-child{border-bottom:none;}
 .tp-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;}
 .tp-row input{width:18px;height:18px;margin-top:1px;flex-shrink:0;cursor:pointer;}
 .tp-row label{flex:1;line-height:1.5;}
@@ -680,7 +687,7 @@ input,textarea,select{font-family:inherit;color:var(--text);}
 "use strict";
 /* ================= 常量 ================= */
 const STORAGE_KEY="lifeCockpitData";
-const APP_VERSION="3.24";
+const APP_VERSION="3.25";
 const CATS={
   create:{name:"烧脑创造",desc:"需要集中注意力、动脑子的事",dot:"#3a8c6f",icon:"🧠"},
   errand:{name:"杂事清理",desc:"不动脑子但必须做的杂务",dot:"#e8b84a",icon:"🧹"},
@@ -914,7 +921,7 @@ function handleNewDay(){
   const snap={date:data.lastDate,tasks:[],habits:[],moments:[],goalPct:goalPctNow,main:data.dayMain?data.dayMain.text:null,review:data.review?{score:data.review.score,mood:data.review.mood,insight:data.review.insight,tomorrow:data.review.tomorrow,adjust:data.review.adjust,gain:data.review.gain}:null};
   for(const c in CATS){
     data.tasks[c].forEach(t=>{
-      snap.tasks.push({name:t.name,cat:c,done:t.done,actual:t.actual,reason:t.reason,priority:t.priority});
+      if(!t.isExample)snap.tasks.push({name:t.name,cat:c,done:t.done,actual:t.actual,reason:t.reason,priority:t.priority});
       if(!t.done && !t.isExample){
         data.taskHistory.push({cat:c,name:t.name,date:data.lastDate,reason:t.reason||null});
       }
@@ -922,7 +929,7 @@ function handleNewDay(){
     });
   }
   data.habits.forEach(h=>{ if(h.done[today]) snap.habits.push({name:h.name,icon:h.icon}); });
-  (data.moments||[]).filter(m=>m.date===data.lastDate).forEach(m=>snap.moments.push({ev:m.ev,fd:m.fd,ac:m.ac,ln:m.ln,text:m.text,emoji:m.emoji}));
+  (data.moments||[]).filter(m=>m.date===data.lastDate).forEach(m=>snap.moments.push({id:m.id,time:m.time,ev:m.ev,fd:m.fd,ac:m.ac,ln:m.ln,text:m.text,emoji:m.emoji,body:m.body,verify:m.verify}));
   data.dayLogs.push(snap);
   if(data.dayLogs.length>90) data.dayLogs=data.dayLogs.slice(-90);
   /* 2.4) 跨周自动存档周报（上周结论沉淀，下周可对比） */
@@ -2432,17 +2439,65 @@ function renderSummary(){
   const mdBtn=document.getElementById("btnSummaryMD");
   if(mdBtn)mdBtn.onclick=exportSummaryMD;
 }
+let histPage=0;
 function dayLogsHTML(){
-  const logs=data.dayLogs.slice().reverse().slice(0,14);
-  if(!logs.length)return "";
-  return logs.map(l=>{
-    const done=l.tasks?l.tasks.filter(x=>x.done).length:0;
-    const undone=l.tasks?l.tasks.filter(x=>!x.done):[];
-    const undoneNames=undone.slice(0,3).map(x=>x.name+(x.reason?"·"+x.reason:""));
-    return `<div class="day-log"><b>${l.date}</b> · 完成 ${done}/${l.tasks?l.tasks.length:0} · 习惯 ${l.habits?l.habits.length:0} 项 · 觉察 ${l.moments?l.moments.length:0} 条 · 评分 ${l.review&&l.review.score!=null?l.review.score:"—"}
-      ${undoneNames.length?`<div class="dl-tags">${undoneNames.map(n=>`<span class="dl-tag">${escapeHtml(n)}</span>`).join("")}</div>`:""}
-      </div>`;
+  /* v3.25 历史总结：真正可回看的每日总结卡（快照+复盘+觉察合并），空档日自动过滤 */
+  const allDates=new Set();
+  (data.dayLogs||[]).forEach(l=>{if(l&&l.date)allDates.add(l.date);});
+  (data.reviews||[]).forEach(r=>{if(r&&r.date)allDates.add(r.date);});
+  (data.moments||[]).forEach(m=>{if(m&&m.date&&!m.isExample)allDates.add(m.date);});
+  const momByDate={};
+  (data.moments||[]).forEach(m=>{if(m&&m.date&&!m.isExample)(momByDate[m.date]=momByDate[m.date]||[]).push(m);});
+  const revMap={};
+  (data.reviews||[]).forEach(r=>{if(r&&r.date)revMap[r.date]=r;});
+  const logMap={};
+  (data.dayLogs||[]).forEach(l=>{if(l&&l.date)logMap[l.date]=l;});
+  const hasContent=d=>{
+    const l=logMap[d]||{};
+    const tasks=(l.tasks||[]).filter(x=>!x.isExample);
+    return tasks.length>0||(l.review&&l.review.score!=null)||(revMap[d]&&revMap[d].score!=null)||(momByDate[d]&&momByDate[d].length)||(l.habits&&l.habits.length);
+  };
+  const datesWith=Array.from(allDates).filter(hasContent).sort().reverse();
+  const skipped=allDates.size-datesWith.length;
+  const pageSize=7;
+  let pages=Math.max(1,Math.ceil(datesWith.length/pageSize));
+  if(histPage>=pages)histPage=pages-1;
+  if(histPage<0)histPage=0;
+  const pageDates=datesWith.slice(histPage*pageSize,histPage*pageSize+pageSize);
+  if(!pageDates.length)return `<div style="font-size:13px;color:var(--text-place)">暂无可回看的总结${skipped?`（已过滤 ${skipped} 个无内容的空档日）`:""}。写完今天的总结，明天跨天后会自动存档到这里。</div>`;
+  const rows=pageDates.map(d=>{
+    const l=logMap[d]||{};
+    const tasks=(l.tasks||[]).filter(x=>!x.isExample);
+    const done=tasks.filter(x=>x.done),undone=tasks.filter(x=>!x.done);
+    const rev=revMap[d]||l.review||null;
+    const moms=momByDate[d]||[];
+    const comp=tasks.length?Math.round(done.length/tasks.length*100):null;
+    const summary=`📅 ${d}${comp!=null?` · 完成 ${done.length}/${tasks.length} (${comp}%)`:""}${rev&&rev.score!=null?` · 评分 ${rev.score}`:""}${moms.length?` · 觉察 ${moms.length} 条`:""}`;
+    const body=`<div class="hist-body">
+      ${done.length?`<div><b style="color:var(--done)">✅ 完成：</b>${done.map(x=>escapeHtml(x.name)).join("；")}</div>`:""}
+      ${undone.length?`<div style="margin-top:4px"><b style="color:var(--undone)">⬜ 未完成：</b>${undone.map(x=>escapeHtml(x.name)+(x.reason?"（"+escapeHtml(x.reason)+"）":"")).join("；")}</div>`:""}
+      ${(l.habits&&l.habits.length)?`<div style="margin-top:4px"><b>🔥 习惯：</b>${l.habits.map(h=>`${h.icon||""} ${escapeHtml(h.name)}`).join("；")}</div>`:""}
+      ${moms.length?`<div style="margin-top:6px">${moms.map(m=>`<div class="hist-mom">${m.emoji||"💭"} <b>事件</b> ${escapeHtml(m.ev||"—")}${m.fd?` <span style="color:var(--text-dim)">发现：${escapeHtml(m.fd)}</span>`:""}${m.ac?` <span style="color:var(--text-dim)">动作：${escapeHtml(m.ac)}</span>`:""}${m.ln?` <span style="color:var(--main)">学会：${escapeHtml(m.ln)}</span>`:""}${m.time?` <span style="color:var(--text-place);font-size:11px">${escapeHtml(m.time)}</span>`:""}</div>`).join("")}</div>`:""}
+      ${rev?`<div style="margin-top:6px;background:var(--bg);border-radius:8px;padding:8px;border:1px solid var(--border)">
+        <b>📝 复盘</b>${rev.score!=null?` · 评分 ${rev.score}`:""}${rev.mood?` · ${moodLabel(rev.mood)}`:""}
+        ${rev.insight&&rev.insight.trim()?`<div>💡 想明白：${escapeHtml(rev.insight)}</div>`:""}
+        ${rev.gain&&rev.gain.trim()?`<div>🌟 进步：${escapeHtml(rev.gain)}</div>`:""}
+        ${rev.adjust&&rev.adjust.trim()?`<div>🔧 要调整：${escapeHtml(rev.adjust)}</div>`:""}
+        ${rev.tomorrow&&rev.tomorrow.trim()?`<div>➡️ 明天最重要：${escapeHtml(rev.tomorrow)}</div>`:""}
+      </div>`:""}
+      ${l.goalPct!=null?`<div style="margin-top:4px;color:var(--text-dim);font-size:12px">🎯 当日目标进度 ${l.goalPct}%</div>`:""}
+    </div>`;
+    return `<div class="hist-card"><div class="hist-head" onclick="toggleHist(this)"><span>${summary}</span><span class="hist-arrow">▸</span></div><div class="hist-collapse" style="display:none">${body}</div></div>`;
   }).join("");
+  const pager=pages>1?`<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="copy-btn" onclick="histPage--;renderSummary()" ${histPage===0?'disabled':''}>‹ 上一页</button><span style="font-size:13px;color:var(--text-dim)">第 ${histPage+1}/${pages} 页 · ${datesWith.length} 天</span><button class="copy-btn" onclick="histPage++;renderSummary()" ${histPage>=pages-1?'disabled':''}>下一页 ›</button></div>`:"";
+  return `${skipped?`<div style="font-size:12px;color:var(--text-place);margin-bottom:6px">已过滤 ${skipped} 个无内容的空档日（仅打开未使用）</div>`:""}${rows}${pager}`;
+}
+function toggleHist(head){
+  const body=head.nextElementSibling;
+  const open=body.style.display==="block";
+  body.style.display=open?"none":"block";
+  const ar=head.querySelector(".hist-arrow");
+  if(ar)ar.textContent=open?"▸":"▾";
 }
 function copySummary(){
   const t=computeToday();
@@ -2977,6 +3032,6 @@ load();
 bindStatic();
 initAll();
 </script>
-<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.24 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
+<div style="text-align:center;padding:10px 0 24px;font-size:11px;color:var(--text-dim);opacity:.7">LIFE COCKPIT v3.25 · 数据仅存本浏览器 localStorage，请定期「📋 复制备份」</div>
 </body>
 </html>
